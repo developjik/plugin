@@ -1,0 +1,38 @@
+{
+  "name": "dev-kit",
+  "version": "1.2.0",
+  "description": "Disciplined local development workflows for planning, execution, debugging, optimization, and cleanup.",
+  "author": {
+    "name": "developjik"
+  },
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "debugging",
+    "optimization",
+    "code-quality",
+    "workflow",
+    "automation"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Dev Kit",
+    "shortDescription": "Disciplined planning, execution, debugging, and cleanup workflows.",
+    "longDescription": "Local Codex plugin bundling reusable development skills for clarification, plan execution, milestone orchestration, debugging, optimization, and AI-code cleanup.",
+    "developerName": "developjik",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Clarify this request and turn it into an execution-ready plan.",
+      "Run this implementation plan and validate each task independently.",
+      "Debug this failing test using a reproduce-first workflow."
+    ]
+  }
+}

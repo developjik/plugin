@@ -1,0 +1,21 @@
+{
+  "name": "plugin-skeleton",
+  "version": "[TODO: 1.0.0]",
+  "description": "[TODO: Brief plugin description]",
+  "author": {
+    "name": "[TODO: Author Name]",
+    "email": "[TODO: author@example.com]",
+    "url": "[TODO: https://github.com/author]"
+  },
+  "homepage": "[TODO: https://github.com/author/plugin]",
+  "repository": "[TODO: https://github.com/author/plugin]",
+  "license": "[TODO: MIT]",
+  "keywords": [
+    "[TODO: keyword1]",
+    "[TODO: keyword2]"
+  ],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
+}
