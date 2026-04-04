@@ -13,5 +13,34 @@
     "code-quality",
     "workflow",
     "automation"
-  ]
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Dev Kit",
+    "shortDescription": "Disciplined planning, execution, debugging, and cleanup workflows.",
+    "longDescription": "Local plugin bundling reusable development skills for clarification, plan execution, milestone orchestration, debugging, optimization, and AI-code cleanup.",
+    "developerName": "developjik",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Help me clarify this vague request into a well-scoped brief.",
+      "Write an executable implementation plan for this task.",
+      "Run this implementation plan and validate each task independently.",
+      "Review the implementation against the plan and give me a PASS/FAIL verdict.",
+      "Break this project into milestones with dependency ordering.",
+      "Execute all milestones with checkpoints and recovery.",
+      "Implement this change surgically — minimum edits, no scope creep.",
+      "Simplify the changed code for reuse, quality, and efficiency.",
+      "Clean up the AI-generated code smells without changing behavior.",
+      "Debug this failing test using a reproduce-first workflow.",
+      "Find out where this code is actually slow before optimizing."
+    ]
+  }
 }

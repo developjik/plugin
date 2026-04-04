@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Dev Kit",
     "shortDescription": "Disciplined planning, execution, debugging, and cleanup workflows.",
-    "longDescription": "Local Codex plugin bundling reusable development skills for clarification, plan execution, milestone orchestration, debugging, optimization, and AI-code cleanup.",
+    "longDescription": "Local plugin bundling reusable development skills for clarification, plan execution, milestone orchestration, debugging, optimization, and AI-code cleanup.",
     "developerName": "developjik",
     "category": "Productivity",
     "capabilities": [

@@ -1,10 +1,20 @@
 # Dev Kit
 
-Local Codex plugin for disciplined development workflows.
+Plugin for Claude Code and OpenAI Codex providing disciplined development workflows.
 
 ## Installation
 
-Copy the `dev-kit/` directory into your project's plugin location. The plugin is discovered via `.codex-plugin/plugin.json`.
+### Claude Code
+
+```bash
+claude --plugin-dir ./dev-kit
+```
+
+Or copy the `dev-kit/` directory to your project. The plugin is discovered via `.claude-plugin/plugin.json`.
+
+### OpenAI Codex
+
+Copy the `dev-kit/` directory into your project. The plugin is discovered via `.codex-plugin/plugin.json`.
 
 ## Quick Start
 
@@ -75,8 +85,9 @@ Planning artifacts are saved under `docs/dev-kit/`.
 
 ## Structure
 
-- `.codex-plugin/plugin.json`: plugin manifest
-- `skills/`: bundled workflow and discipline skills
+- `.claude-plugin/plugin.json`: Claude Code plugin manifest
+- `.codex-plugin/plugin.json`: Codex plugin manifest
+- `skills/`: bundled workflow and discipline skills (shared by both platforms)
 - `hooks/hooks.json`: hook definitions
 - `scripts/`: local helper scripts
 - `assets/`: icons, logos, screenshots
