@@ -3,7 +3,7 @@ name: debug-systematically
 description: Use when encountering any bug, test failure, or unexpected behavior. Enforces a strict reproduce-first, root-cause-first, failing-test-first debugging workflow before fixing.
 ---
 
-# Systematic Debugging
+# Debug Systematically
 
 This is a strict debugging workflow for bugs, test failures, and unexpected behavior.
 

@@ -3,7 +3,7 @@ name: write-surgically
 description: Behavioral guardrails to prevent common LLM coding mistakes — enforces surgical changes, assumption verification, and scope discipline before and during implementation. Use when implementing features, modifying code, or when you notice yourself about to make changes without reading the existing code first.
 ---
 
-# Karpathy Guidelines
+# Write Surgically
 
 A preventive thinking discipline for code implementation. Activates before and during code writing to block the most common mistakes LLMs make when generating code.
 

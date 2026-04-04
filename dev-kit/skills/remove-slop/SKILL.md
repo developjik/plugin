@@ -3,7 +3,7 @@ name: remove-slop
 description: Corrective cleanup of AI-generated code — removes LLM-specific patterns while preserving behavior. Use when the user says "clean up", "deslop", "slop", "clean AI code", or when you spot LLM-generated code smells after any generation session.
 ---
 
-# AI Slop Cleaner
+# Remove Slop
 
 A corrective discipline for cleaning AI-generated code. Runs after code generation — whether from `execute-plan`, a manual session, or any other source.
 

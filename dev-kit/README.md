@@ -2,6 +2,36 @@
 
 Local Codex plugin for disciplined development workflows.
 
+## Installation
+
+Copy the `dev-kit/` directory into your project's plugin location. The plugin is discovered via `.codex-plugin/plugin.json`.
+
+## Quick Start
+
+Dev Kit provides 11 skills organized into three categories. Start with the workflow that matches your task size:
+
+| Task Size | Workflow | Skills |
+|---|---|---|
+| Simple change (1-3 files) | `write-surgically` | Make surgical edits directly |
+| Medium task (clear scope) | `clarify-requirements` → `craft-plan` → `execute-plan` → `verify-implementation` | Plan pipeline |
+| Large project | `clarify-requirements` → `decompose-milestones` → `orchestrate-execution` | Milestone pipeline |
+
+### Common Prompts
+
+```
+"Help me clarify this vague request into a well-scoped brief."
+"Write an executable implementation plan for this task."
+"Run this implementation plan and validate each task independently."
+"Review the implementation against the plan and give me a PASS/FAIL verdict."
+"Break this project into milestones with dependency ordering."
+"Execute all milestones with checkpoints and recovery."
+"Implement this change surgically — minimum edits, no scope creep."
+"Simplify the changed code for reuse, quality, and efficiency."
+"Clean up the AI-generated code smells without changing behavior."
+"Debug this failing test using a reproduce-first workflow."
+"Find out where this code is actually slow before optimizing."
+```
+
 ## Included Skills
 
 ### Workflow
@@ -24,6 +54,25 @@ Local Codex plugin for disciplined development workflows.
 - `debug-systematically`: reproduce-first, root-cause-first debugging workflow
 - `measure-performance`: measurement-first optimization guardrails
 
+## How Skills Connect
+
+```
+clarify-requirements
+  ├── Simple  → craft-plan → execute-plan → verify-implementation
+  └── Complex → decompose-milestones → orchestrate-execution
+
+Guardrails (apply anytime):
+  write-surgically    — during implementation
+  remove-slop         — after AI generation
+  simplify-changes    — after any changes
+
+Diagnostics (on demand):
+  debug-systematically  — on bugs/failures
+  measure-performance   — on performance concerns
+```
+
+Planning artifacts are saved under `docs/dev-kit/`.
+
 ## Structure
 
 - `.codex-plugin/plugin.json`: plugin manifest
@@ -36,6 +85,5 @@ Local Codex plugin for disciplined development workflows.
 
 ## Notes
 
-- Planning artifacts default to `docs/dev-kit/`
-- `systematic-debugging/` includes supporting reference material and helper scripts
-- `milestone-planning` and `long-run` extend the core plan/execute/review pipeline for larger work
+- `debug-systematically/` includes supporting reference material and helper scripts
+- `decompose-milestones` and `orchestrate-execution` extend the core plan/execute/review pipeline for larger work
