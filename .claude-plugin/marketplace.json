@@ -1,0 +1,31 @@
+{
+  "name": "developjik-plugins",
+  "owner": {
+    "name": "developjik"
+  },
+  "metadata": {
+    "description": "Disciplined development workflow plugins for Claude Code",
+    "pluginRoot": "./"
+  },
+  "plugins": [
+    {
+      "name": "dev-kit",
+      "source": "./dev-kit",
+      "description": "Disciplined local development workflows for planning, execution, debugging, optimization, and cleanup.",
+      "version": "1.2.0",
+      "author": {
+        "name": "developjik"
+      },
+      "license": "MIT",
+      "keywords": [
+        "planning",
+        "debugging",
+        "optimization",
+        "code-quality",
+        "workflow",
+        "automation"
+      ],
+      "category": "Productivity"
+    }
+  ]
+}

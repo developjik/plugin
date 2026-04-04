@@ -5,6 +5,8 @@
   "author": {
     "name": "developjik"
   },
+  "homepage": "https://github.com/developjik/plugin/tree/main/dev-kit",
+  "repository": "https://github.com/developjik/plugin",
   "license": "MIT",
   "keywords": [
     "planning",
