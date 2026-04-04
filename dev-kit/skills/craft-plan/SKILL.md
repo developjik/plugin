@@ -3,7 +3,7 @@ name: craft-plan
 description: Use when a task's scope is clear and multi-step implementation is needed, before touching code. Triggered after the clarify-requirements skill completes, or when the user explicitly requests plan creation with a clear prompt.
 ---
 
-# Plan Crafting
+# Craft Plan
 
 Writes an executable plan document from a clearly defined work scope. Designed so tasks can be spawned as "worker-validator" pairs in parallel.
 

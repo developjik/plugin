@@ -3,7 +3,7 @@ name: verify-implementation
 description: Use after execute-plan completes to independently verify the implementation. Reads only the plan document and inspects the codebase from scratch — information-isolated from the execution context. Produces a structured review document with PASS/FAIL verdict. Triggers when the user says "review the work", "verify the implementation", "check if the plan was executed correctly".
 ---
 
-# Review Work
+# Verify Implementation
 
 Independently verifies implementation results using only the plan document and the codebase. Receives no information from the execution process.
 

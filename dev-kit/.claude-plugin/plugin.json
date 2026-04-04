@@ -1,0 +1,17 @@
+{
+  "name": "dev-kit",
+  "version": "1.2.0",
+  "description": "Disciplined local development workflows for planning, execution, debugging, optimization, and cleanup.",
+  "author": {
+    "name": "developjik"
+  },
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "debugging",
+    "optimization",
+    "code-quality",
+    "workflow",
+    "automation"
+  ]
+}
