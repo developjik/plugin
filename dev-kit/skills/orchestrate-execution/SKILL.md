@@ -3,7 +3,7 @@ name: orchestrate-execution
 description: Orchestrates multi-day execution of complex tasks through milestones. Each milestone goes through craft-plan, execute-plan (worker-validator), and verify-implementation phases with checkpoint/recovery. Triggers when the user says "long run", "start long run", "execute milestones", or "run all milestones".
 ---
 
-# Long Run Harness
+# Orchestrate Execution
 
 Orchestrates multi-day execution of complex tasks through a milestone pipeline. Each milestone passes through craft-plan → execute-plan → verify-implementation with checkpoints between milestones for recovery from interruptions.
 

@@ -3,7 +3,7 @@ name: execute-plan
 description: Use when you have a written implementation plan to execute. Loads the plan, reviews critically, executes tasks in dependency order, and reports completion. Triggers when the user says "run the plan", "execute the plan", or "let's start implementing".
 ---
 
-# Run Plan
+# Execute Plan
 
 Loads a written plan document, reviews it critically, then executes tasks in dependency order using a worker-validator loop.
 

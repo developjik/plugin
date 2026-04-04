@@ -3,7 +3,7 @@ name: simplify-changes
 description: Review changed code for reuse opportunities, quality issues, and inefficiencies using three parallel review agents, then fix any issues found. Triggers when the user says "simplify", "clean up the code", "review the changes", or after execute-plan execution when code quality verification is needed.
 ---
 
-# Simplify
+# Simplify Changes
 
 Reviews all changed files through three parallel agents — reuse, quality, and efficiency — then fixes any issues found.
 

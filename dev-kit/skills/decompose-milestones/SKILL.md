@@ -3,7 +3,7 @@ name: decompose-milestones
 description: Decomposes complex, multi-day tasks into optimized milestones using parallel reviewer agents (ultraplan). Spawns 5 independent reviewers that analyze the problem from different angles, then synthesizes their findings into a milestone dependency DAG. Triggers when the user says "plan milestones", "break this into milestones", "ultraplan", or when orchestrate-execution harness needs milestone generation.
 ---
 
-# Milestone Planning (Ultraplan)
+# Decompose Milestones
 
 Decomposes a complex task into milestones by spawning 5 parallel reviewer agents, synthesizing their independent analyses, and producing a milestone dependency DAG.
 
