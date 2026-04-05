@@ -1,11 +1,11 @@
 ---
-name: orchestrate-execution
-description: Orchestrates multi-day execution of complex tasks through milestones. Each milestone goes through craft-plan, execute-plan (worker-validator), and verify-implementation phases with checkpoint/recovery. Triggers when the user says "long run", "start long run", "execute milestones", or "run all milestones".
+name: long-execute
+description: Orchestrates multi-day execution of complex tasks through milestones. Each milestone goes through planning, execute (worker-validator), and review-execute phases with checkpoint/recovery. Triggers when the user says "long run", "start long run", "execute milestones", or "run all milestones".
 ---
 
-# Orchestrate Execution
+# Long Run Harness
 
-Orchestrates multi-day execution of complex tasks through a milestone pipeline. Each milestone passes through craft-plan → execute-plan → verify-implementation with checkpoints between milestones for recovery from interruptions.
+Orchestrates multi-day execution of complex tasks through a milestone pipeline. Each milestone passes through planning → execute → review-execute with checkpoints between milestones for recovery from interruptions.
 
 ## Core Principle
 
@@ -13,38 +13,45 @@ Long-running execution must be **resumable, auditable, and fail-safe.** Every st
 
 ## Hard Gates
 
-1. **Milestones must exist before execution.** Either from `decompose-milestones` skill or user-provided. Never generate milestones inline during execution.
+1. **Milestones must exist before execution.** Either from `milestone-planning` skill or user-provided. Never generate milestones inline during execution.
 2. **State file must be updated before and after every milestone.** No in-memory-only state. If it's not on disk, it didn't happen.
-3. **Each milestone must complete the full pipeline.** craft-plan → execute-plan → verify-implementation. No shortcuts. No skipping verify-implementation "because it looked fine."
+3. **Each milestone must complete the full pipeline.** planning → execute → review-execute. No shortcuts. No skipping review-execute "because it looked fine."
 4. **Failed milestones block dependents.** If M2 depends on M1 and M1 fails review, M2 does not start. Period.
 5. **User confirmation required at gate points.** Before starting a new milestone phase (planning, execution, review), check if the user wants to continue, pause, or abort.
-6. **Never modify completed milestones.** Once a milestone passes verify-implementation, its files are locked. If a later milestone needs changes to earlier work, that is a new milestone.
+6. **Never modify completed milestones.** Once a milestone passes review-execute, its files are locked. If a later milestone needs changes to earlier work, that is a new milestone.
 7. **Checkpoint after every milestone completion.** Write a checkpoint file recording what was done, test results, and review verdict before proceeding.
 
 ## When To Use
 
-- After `decompose-milestones` has produced a milestone DAG
+- After `milestone-planning` has produced a milestone DAG
 - When the user says "long run", "start long run", "execute milestones", or "run all milestones"
 - When resuming a previously paused long run session
 
 ## When NOT To Use
 
-- When milestones don't exist yet (use `decompose-milestones` first)
-- When there's only one milestone (use craft-plan + execute-plan directly)
+- When milestones don't exist yet (use `milestone-planning` first)
+- When there's only one milestone (use planning + execute directly)
 - For quick tasks that don't warrant multi-phase execution
 
 ## Input
 
-1. **Harness state directory path** — e.g., `docs/dev-kit/harness/<session-slug>/`
+1. **Session directory path** — e.g., `docs/sessions/<session-id>/`
 2. The directory must contain `state.md` and `milestones/*.md` files
 
-If no state directory exists, ask the user if they want to run `decompose-milestones` first.
+If no state directory exists, ask the user if they want to run `milestone-planning` first.
 
 ## Process
 
 ### Phase 1: Load and Validate State
 
-1. Read `state.md` from the harness directory
+#### Session Discovery
+
+This skill operates within a session at `docs/sessions/<session-id>/`.
+
+- If the user or resume skill provides a session path, use it.
+- Otherwise, scan `docs/sessions/` for the most recent session where milestone-planning is completed and long-execute is not yet completed.
+
+1. Read `state.md` from the session directory
 2. Read all milestone files from `milestones/`
 3. Validate:
    - All milestones referenced in state.md have corresponding files
@@ -117,9 +124,9 @@ Before starting a milestone:
      - Interface contracts established (function signatures, API shapes, type definitions)
      - Success criteria that were verified as met
    - Do NOT include: execution logs, review documents, worker/validator output, or full checkpoint contents
-   - **Note:** Context Briefs composed from milestone definitions omit the Complexity Assessment section, since routing has already been determined by the decompose-milestones phase. The brief goes directly to craft-plan without re-routing.
-2. Invoke the `craft-plan` skill pattern:
-   - Create a plan document at `docs/dev-kit/plans/YYYY-MM-DD-<milestone-name>.md`
+   - **Note:** Context Briefs composed from milestone definitions omit the Complexity Assessment section, since routing has already been determined by the milestone-planning phase. The brief goes directly to planning without re-routing.
+2. Invoke the `planning` skill pattern:
+   - Create a plan document at `plans/M<N>-<name>.md`
    - The plan must satisfy all milestone success criteria
    - The plan must not modify files outside the milestone's scope
 3. Update state.md: record plan file path for this milestone
@@ -128,11 +135,11 @@ Before starting a milestone:
 #### Step 2-3: Run Plan Phase
 
 1. Update state.md: set milestone status to `executing`, increment `Attempts` counter by 1
-2. Execute the plan using the `execute-plan` skill pattern:
+2. Execute the plan using the `execute` skill pattern:
    - Worker-validator loop for each task
    - Parallel execution for independent tasks
    - Information-isolated validators
-3. If execute-plan reports failure after 3 retries on any task:
+3. If execute reports failure after 3 retries on any task:
    - Update state.md: set milestone status to `failed`
    - Record failure details in execution log
    - **Stop and report to user.** Do not proceed to dependent milestones.
@@ -141,7 +148,7 @@ Before starting a milestone:
 #### Step 2-4: Review Work Phase
 
 1. Update state.md: set milestone status to `validating`
-2. Invoke the `verify-implementation` skill pattern:
+2. Invoke the `review-execute` skill pattern:
    - Information-isolated review against the plan document
    - Binary PASS/FAIL verdict
 3. **If PASS:**
@@ -158,22 +165,22 @@ Before starting a milestone:
 
 #### Step 2-5: Cross-Milestone Integration Check
 
-After a milestone passes verify-implementation but **before** writing the checkpoint, verify that the milestone's output integrates correctly with all previously completed milestones:
+After a milestone passes review-execute but **before** writing the checkpoint, verify that the milestone's output integrates correctly with all previously completed milestones:
 
-1. **Run the project's highest-level verification** (from state.md's Verification Strategy or rediscover using craft-plan's Verification Discovery order)
+1. **Run the project's highest-level verification** (from state.md's Verification Strategy or rediscover using planning's Verification Discovery order)
 2. **Check cross-milestone interfaces:** If the completed milestone defines or consumes interfaces from predecessor milestones, verify they are compatible (function signatures match, API contracts hold, types align)
 
 **If integration check passes:** Proceed to checkpoint.
 
 **If integration check fails — Cross-Milestone Failure Response:**
 
-The milestone passed its own verify-implementation (internal correctness) but breaks integration with other milestones. This is a boundary problem.
+The milestone passed its own review-execute (internal correctness) but breaks integration with other milestones. This is a boundary problem.
 
 1. **Diagnose (attempt 1):**
    - Read the failure output
    - Identify which interface boundary or interaction is broken
    - Determine if the fix belongs to the current milestone or requires a corrective milestone
-   - If fixable within current milestone scope: dispatch a targeted fix worker → re-run verify-implementation → re-run integration check
+   - If fixable within current milestone scope: dispatch a targeted fix worker → re-run review-execute → re-run integration check
    - If the fix is outside current milestone scope: proceed to escalation
 
 2. **Diagnose (attempt 2):**
@@ -200,10 +207,10 @@ Write `checkpoints/M<N>-checkpoint.md`:
 **Attempts:** [number of plan-execute-review cycles]
 
 ## Plan File
-`docs/dev-kit/plans/YYYY-MM-DD-<name>.md`
+`plans/M<N>-<name>.md`
 
 ## Review File
-`docs/dev-kit/reviews/YYYY-MM-DD-<name>-review.md`
+`reviews/M<N>-<name>-review.md`
 
 ## Test Results
 [Full test suite status at checkpoint time]
@@ -220,11 +227,11 @@ Write `checkpoints/M<N>-checkpoint.md`:
 When multiple milestones have all dependencies satisfied and no file conflicts:
 
 1. Identify parallelizable milestone group
-2. Run craft-plan for ALL parallel milestones first (sequentially — plans are lightweight)
+2. Run planning for ALL parallel milestones first (sequentially — plans are lightweight)
 3. Present ALL plans together for batch approval: "Milestones M3 and M4 can run in parallel. Here are both plans. Approve each individually."
 4. User approves or rejects each plan independently. Only approved milestones proceed to execution. Rejected milestones return to Step 2-2 while approved ones execute.
 5. If all approved, dispatch each milestone's pipeline concurrently:
-   - Each milestone runs execute-plan → verify-implementation (plan already approved in step 3)
+   - Each milestone runs execute → review-execute (plan already approved in step 3)
    - Each runs in a worktree (`isolation: "worktree"`) to prevent file conflicts
    - After both complete and pass review, merge worktrees back
 4. If either fails: handle independently (the other can continue if no dependency)
@@ -239,7 +246,7 @@ When multiple milestones have all dependencies satisfied and no file conflicts:
 
 ### Phase 4: Completion
 
-After all milestones are completed (including the Integration Verification Milestone from decompose-milestones):
+After all milestones are completed (including the Integration Verification Milestone from milestone-planning):
 
 1. Update state.md: set overall status to `completing`
 2. **Final E2E Gate:** Run the project's highest-level verification one final time on the fully integrated codebase
@@ -247,7 +254,7 @@ After all milestones are completed (including the Integration Verification Miles
 4. **If Final E2E Gate fails:**
    - Diagnose: identify which milestone's output is the likely cause
    - Create a corrective milestone via Mid-Execution Correction procedure
-   - Execute corrective milestone through the full pipeline (craft-plan → execute-plan → verify-implementation)
+   - Execute corrective milestone through the full pipeline (planning → execute → review-execute)
    - Re-run E2E Gate after correction
    - If 2 corrective attempts fail: escalate to user with full diagnosis
 5. **If Final E2E Gate passes:** Update state.md: set overall status to `completed`
@@ -276,7 +283,7 @@ After all milestones are completed (including the Integration Verification Miles
 [Aggregated list across all milestones]
 ```
 
-4. Present to user and suggest `simplify-changes` for a final code quality pass
+4. Present to user and suggest `simplify-code` for a final code quality pass
 
 ## Recovery Protocol
 
@@ -288,9 +295,9 @@ When resuming a paused or interrupted session:
 | Last Status | Recovery Action |
 |-------------|----------------|
 | `pending` | Start normally |
-| `planning` | Restart craft-plan (plan file may be incomplete) |
-| `executing` | Check execute-plan progress; resume or restart |
-| `validating` | Restart verify-implementation (review may be incomplete) |
+| `planning` | Restart planning (plan file may be incomplete) |
+| `executing` | Check execute progress; resume or restart |
+| `validating` | Restart review-execute (review may be incomplete) |
 | `completed` | Skip (already checkpointed) |
 | `failed` | Present failure to user; ask whether to retry or skip (see Skip Rules below) |
 | `skipped` | Skip (user previously chose to skip this milestone) |
@@ -306,10 +313,10 @@ If execution reveals that a completed milestone's output is incorrect or a new m
 1. **Pause execution** — do not continue with dependent milestones
 2. **Log the discovery** in state.md execution log: what was found, which milestone triggered the discovery
 3. **User decision required:** present the situation and options:
-   - **Add corrective milestone:** Create a new milestone definition (the user writes the goal and success criteria, or re-run decompose-milestones for just the new scope). Insert it into the DAG with appropriate dependencies. Resume execution from the new milestone.
+   - **Add corrective milestone:** Create a new milestone definition (the user writes the goal and success criteria, or re-run milestone-planning for just the new scope). Insert it into the DAG with appropriate dependencies. Resume execution from the new milestone.
    - **Re-plan from a checkpoint:** Roll back to a completed milestone's checkpoint, mark subsequent milestones as `pending`, reset their `Attempts` to 0, and restart from that point.
    - **Abort:** Set overall status to `failed` and stop.
-4. **New milestones follow the same pipeline** — craft-plan → execute-plan → verify-implementation. No shortcuts even for "quick fixes."
+4. **New milestones follow the same pipeline** — planning → execute → review-execute. No shortcuts even for "quick fixes."
 5. **Completed milestones are never modified** (Hard Gate #6 still applies). The corrective milestone produces new files or overwrites with a full plan cycle.
 
 ## Skip Rules
@@ -320,7 +327,7 @@ When a user chooses to skip a failed milestone:
 2. Log the skip event with user's reason in execution log
 3. **Dependents of a skipped milestone are also blocked by default** — same as `failed`. The DAG contract is: dependents run only after prerequisites are `completed`.
 4. The user may explicitly unblock a dependent by acknowledging the missing prerequisite: "Proceed with M4 despite M2 being skipped." Log this override in the execution log.
-5. If the user unblocks a dependent, add a note to that milestone's Context Brief during craft-plan: "Prerequisite M2 was skipped. The following outputs are missing: [list from M2's success criteria]."
+5. If the user unblocks a dependent, add a note to that milestone's Context Brief during planning: "Prerequisite M2 was skipped. The following outputs are missing: [list from M2's success criteria]."
 
 **Skipped milestones cannot be un-skipped.** If the user wants to attempt the milestone later, create a new milestone with the same goal.
 
@@ -329,7 +336,7 @@ When a user chooses to skip a failed milestone:
 If a single milestone's total active time (from planning start to review completion) becomes excessive:
 
 1. **Soft limit:** If a milestone has been in `planning` or `executing` status for more than what appears to be a proportionally large share of the overall work, pause and report to user: "Milestone M3 has been in progress for an extended period. Continue, re-scope, or abort?"
-2. **Hard limit on attempts:** The 3-attempt limit (F1) bounds retry loops. But if even a single attempt's craft-plan generates more than 15 tasks, pause and report: "This milestone's plan has N tasks — it may be too large for a single milestone. Consider splitting."
+2. **Hard limit on attempts:** The 3-attempt limit (F1) bounds retry loops. But if even a single attempt's planning generates more than 15 tasks, pause and report: "This milestone's plan has N tasks — it may be too large for a single milestone. Consider splitting."
 3. **Purpose:** Prevent a single runaway milestone from consuming the entire execution budget or running indefinitely on flaky tests.
 
 ## Context Window Management
@@ -337,7 +344,7 @@ If a single milestone's total active time (from planning start to review complet
 Long-running sessions will hit context window limits. Claude Code automatically compresses old messages (context collapse). The harness must be designed to survive this:
 
 1. **Never rely on conversation memory for state.** All state lives in `state.md` and milestone files on disk. If the context is compressed, the harness re-reads state files — no information is lost.
-2. **Each milestone is a fresh context boundary.** When starting a new milestone's craft-plan, the worker subagent starts with a clean context. It receives only the milestone definition and completed predecessor context (see F8 contract) — not the full conversation history.
+2. **Each milestone is a fresh context boundary.** When starting a new milestone's planning, the worker subagent starts with a clean context. It receives only the milestone definition and completed predecessor context (see F8 contract) — not the full conversation history.
 3. **Checkpoint files are the source of truth.** If context is lost mid-milestone, recovery reads the checkpoint files, not compressed conversation summaries.
 4. **Avoid accumulating large inline state.** Do not build up a running summary of all milestones in the conversation. Instead, reference state.md and checkpoint files by path.
 
@@ -348,7 +355,7 @@ Long-running sessions will encounter rate limits. Claude Code has built-in retry
 1. **Let claude-code handle transient rate limits.** Short 429/529 errors are retried automatically with backoff. Do not preemptively save state on every API error.
 2. **Save state on persistent rate limits.** If a rate limit persists beyond the automatic retry window (you'll see repeated "rate limit" messages), record current state to disk immediately.
 3. Log the rate limit event in execution log with timestamp.
-4. Report to user: "Rate limit hit. State saved. Resume with `orchestrate-execution` when ready."
+4. Report to user: "Rate limit hit. State saved. Resume with `long-execute` when ready."
 5. Do NOT add manual retry loops on top of claude-code's built-in retry — this causes retry amplification.
 6. **Background agent bail:** Claude Code's background agents (like reviewer subagents) bail immediately on 529 overload errors instead of retrying. This is why Phase 2.5 reviewer failure handling exists — reviewer failures are often transient rate limits, not permanent errors.
 
@@ -356,8 +363,8 @@ Long-running sessions will encounter rate limits. Claude Code has built-in retry
 
 | Anti-Pattern | Why It Fails |
 |---|---|
-| Generating milestones inline instead of using decompose-milestones | Milestones lack adversarial review; poor decomposition |
-| Skipping verify-implementation for "simple" milestones | Undetected defects compound across milestones |
+| Generating milestones inline instead of using milestone-planning | Milestones lack adversarial review; poor decomposition |
+| Skipping review-execute for "simple" milestones | Undetected defects compound across milestones |
 | Continuing after a milestone fails | Dependent milestones build on broken foundation |
 | Not updating state.md between phases | Crash loses progress; cannot resume |
 | Modifying completed milestone files | Breaks checkpoint invariant; invalidates reviews |
@@ -374,7 +381,7 @@ Long-running sessions will encounter rate limits. Claude Code has built-in retry
 - [ ] Dependency DAG validated (no cycles)
 - [ ] Current position determined (fresh start or resume)
 - [ ] User confirmed continuation at session start
-- [ ] Each milestone goes through craft-plan → execute-plan → verify-implementation
+- [ ] Each milestone goes through planning → execute → review-execute
 - [ ] State.md updated before and after every phase transition
 - [ ] Checkpoint written after every successful milestone
 - [ ] Failed milestones block dependents
@@ -387,8 +394,8 @@ Long-running sessions will encounter rate limits. Claude Code has built-in retry
 
 After long run completion:
 
-- For final code quality pass → `simplify-changes` skill
-- If issues found in completion testing → `debug-systematically` skill
-- If user wants to extend with more milestones → `decompose-milestones` skill
+- For final code quality pass → `simplify-code` skill
+- If issues found in completion testing → `systematic-debugging` skill
+- If user wants to extend with more milestones → `milestone-planning` skill
 
 This skill itself **does not invoke the next skill.** It reports completion and lets the user decide the next step.

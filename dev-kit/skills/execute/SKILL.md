@@ -1,9 +1,9 @@
 ---
-name: execute-plan
+name: execute
 description: Use when you have a written implementation plan to execute. Loads the plan, reviews critically, executes tasks in dependency order, and reports completion. Triggers when the user says "run the plan", "execute the plan", or "let's start implementing".
 ---
 
-# Execute Plan
+# Run Plan
 
 Loads a written plan document, reviews it critically, then executes tasks in dependency order using a worker-validator loop.
 
@@ -23,23 +23,32 @@ Do not follow plans blindly. If the plan has issues, flag them before executing.
 
 ## When To Use
 
-- After a plan has been crafted with the `craft-plan` skill
+- After a plan has been crafted with the `planning` skill
 - When the user says "run this plan" or "execute the plan"
 - When a plan document exists and implementation should begin
 
 ## When NOT To Use
 
-- When no plan document exists yet (use `craft-plan` first)
-- When work scope is still ambiguous (return to the `clarify-requirements` skill)
+- When no plan document exists yet (use `planning` first)
+- When work scope is still ambiguous (return to the `clarify` skill)
 - Single-step tasks that don't need a plan
 
 ## Process
+
+### Session Discovery
+
+This skill operates within a session at `docs/sessions/<session-id>/`.
+
+- If the user or resume skill provides a session path, use it.
+- If the user provides a plan file path, derive the session from it (plan is at `docs/sessions/<session-id>/plan.md`).
+- Otherwise, scan `docs/sessions/` for the most recent session where planning is completed and execute is not yet completed.
+- Read `state.md` for current state and `plan.md` path.
 
 ### Step 0: Project Capability Discovery
 
 Before reviewing the plan, discover what the project offers for verification and execution:
 
-1. **Verification infrastructure** — read the plan's `Verification Strategy` header. If present, use it. If absent, run the same discovery as craft-plan:
+1. **Verification infrastructure** — read the plan's `Verification Strategy` header. If present, use it. If absent, run the same discovery as planning:
    - e2e tests → integration tests → verification skills/agents → test suite → build+lint
    - Record the discovered command for use in the E2E Gate (Step 3)
 
@@ -57,6 +66,11 @@ Before reviewing the plan, discover what the project offers for verification and
    - Is anything unclear?
 3. If issues found: notify the user before starting
 4. If no issues: create tasks via TaskCreate and proceed
+
+**Update `state.md` after Step 1 completes:**
+- Update Pipeline Progress execute checkbox to show in-progress (e.g., `[/]` or `[~]`)
+- Add execution log entry: `execute-started | began task execution`
+- Update Last Updated timestamp
 
 ### Step 2: Task Execution Loop
 
@@ -159,7 +173,6 @@ Report your verdict as PASS or FAIL.
 ```
 
 **What must NOT appear in the validator prompt:**
-
 - The worker's diff, logs, output, or return message
 - The worker's implementation approach or strategy
 - Any paraphrasing or summarization by the main agent — only verbatim plan content fills the template
@@ -168,7 +181,6 @@ Report your verdict as PASS or FAIL.
 **Why a fixed template:** The main agent has seen the worker's output and may unconsciously frame the validator's task in terms of what the worker did. A fixed template eliminates this channel — the validator sees only the plan's original specification, not the main agent's post-worker understanding.
 
 **Validation results:**
-
 - **Pass:** Mark the task as completed and move to the next task
 - **Fail:** Deliver the validator's feedback to the worker and return to step 2-2 for re-implementation. The feedback is the validator's own assessment — do not augment it with the main agent's interpretation.
 
@@ -179,19 +191,16 @@ Report your verdict as PASS or FAIL.
 Tasks that can run in parallel **must** be dispatched in parallel. Grouping them sequentially is prohibited.
 
 Parallel execution conditions (all must be met):
-
 - No dependencies on other tasks
 - No modifications to the same file
 - No changes to shared state (DB schema, config files, etc.)
 
 When running in parallel:
-
 - Dispatch an independent "worker subagent" for each task
 - After each worker completes, dispatch an independent "validator subagent" for review
 - After all parallel tasks complete, aggregate results before proceeding to the next dependent task
 
 Sequential execution required for:
-
 - Tasks with explicit dependencies (run after predecessor completes)
 - Tasks modifying the same file (must run sequentially)
 
@@ -204,6 +213,12 @@ After all tasks are complete (including the Final Verification Task if present),
 3. **Verify all plan success criteria** are met
 
 **If all pass:** Report success summary to the user.
+
+**Update `state.md` after Step 3 completes:**
+- Set Pipeline Progress execute checkbox to `[x]`
+- Add execution log entry: `execute-completed | all tasks passed`
+- Update Next Action: `"Run review-execute. Session: docs/sessions/<session-id>/"`
+- Update Last Updated timestamp
 
 **If E2E verification fails — Failure Response Protocol:**
 
@@ -248,28 +263,28 @@ After each task completion, verify:
 
 ## Anti-Patterns
 
-| Anti-Pattern                                                              | Why It Fails                                                                              |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Executing without reviewing the plan                                      | Plan errors propagate into implementation                                                 |
-| Skipping verification steps                                               | Errors accumulate, debugging cost increases later                                         |
-| Guessing when blocked                                                     | Spec drift, rework required                                                               |
-| Running non-parallelizable tasks in parallel                              | File conflicts, dependency tangles                                                        |
-| Running parallelizable tasks sequentially                                 | Wasted time, unnecessary execution delay                                                  |
-| Main agent performing worker/validator roles inline                       | Defeats independent verification; confirmation bias                                       |
-| Passing worker output to the validator                                    | Validator anchors on worker's framing instead of judging independently                    |
-| Composing the validator prompt freely instead of using the fixed template | Main agent unconsciously leaks worker context through word choice and framing             |
-| Paraphrasing the plan instead of copying verbatim into the template       | Paraphrasing filters through the main agent's post-worker understanding, introducing bias |
-| Starting implementation on main/master without explicit user consent      | Prohibited without explicit approval                                                      |
-| Skipping the E2E gate because individual tasks all passed                 | Task-level pass ≠ system-level pass; integration bugs hide between tasks                  |
-| Retrying E2E failures more than twice without user escalation             | Wastes budget; user may have context about the root cause                                 |
+| Anti-Pattern | Why It Fails |
+|---|---|
+| Executing without reviewing the plan | Plan errors propagate into implementation |
+| Skipping verification steps | Errors accumulate, debugging cost increases later |
+| Guessing when blocked | Spec drift, rework required |
+| Running non-parallelizable tasks in parallel | File conflicts, dependency tangles |
+| Running parallelizable tasks sequentially | Wasted time, unnecessary execution delay |
+| Main agent performing worker/validator roles inline | Defeats independent verification; confirmation bias |
+| Passing worker output to the validator | Validator anchors on worker's framing instead of judging independently |
+| Composing the validator prompt freely instead of using the fixed template | Main agent unconsciously leaks worker context through word choice and framing |
+| Paraphrasing the plan instead of copying verbatim into the template | Paraphrasing filters through the main agent's post-worker understanding, introducing bias |
+| Starting implementation on main/master without explicit user consent | Prohibited without explicit approval |
+| Skipping the E2E gate because individual tasks all passed | Task-level pass ≠ system-level pass; integration bugs hide between tasks |
+| Retrying E2E failures more than twice without user escalation | Wastes budget; user may have context about the root cause |
 
 ## Transition
 
 After plan execution is complete:
 
 - To wrap up the work branch → report results to the user and suggest next steps
-- If independent verification is needed → suggest transitioning to the `verify-implementation` skill
-- If ambiguity is discovered during execution → return to the `clarify-requirements` skill to resolve
-- If the plan itself needs modification → return to the `craft-plan` skill to revise
+- If independent verification is needed → suggest transitioning to the `review-execute` skill
+- If ambiguity is discovered during execution → return to the `clarify` skill to resolve
+- If the plan itself needs modification → return to the `planning` skill to revise
 
 This skill itself **does not invoke the next skill.** It ends by reporting execution results and letting the user choose the next step.

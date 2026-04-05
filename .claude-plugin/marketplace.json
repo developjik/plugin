@@ -1,7 +1,8 @@
 {
   "name": "developjik-plugins",
   "owner": {
-    "name": "developjik"
+    "name": "developjik",
+    "url": "https://github.com/developjik"
   },
   "metadata": {
     "description": "Disciplined development workflow plugins for Claude Code",
@@ -11,10 +12,12 @@
     {
       "name": "dev-kit",
       "source": "./dev-kit",
-      "description": "Disciplined local development workflows for planning, execution, debugging, optimization, and cleanup.",
-      "version": "1.2.0",
+      "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
+      "version": "0.1.0",
       "author": {
-        "name": "developjik"
+        "name": "developjik",
+        "email": "developjik@users.noreply.github.com",
+        "url": "https://github.com/developjik"
       },
       "license": "MIT",
       "keywords": [
@@ -26,6 +29,25 @@
         "automation"
       ],
       "category": "Productivity"
+    },
+    {
+      "name": "skeleton-plugin",
+      "source": "./skeleton-plugin",
+      "description": "Starter plugin template for building Claude Code & Codex plugins",
+      "version": "1.0.0",
+      "author": {
+        "name": "developjik",
+        "email": "developjik@users.noreply.github.com",
+        "url": "https://github.com/developjik"
+      },
+      "license": "MIT",
+      "keywords": [
+        "template",
+        "starter",
+        "skeleton",
+        "plugin-development"
+      ],
+      "category": "Developer Tools"
     }
   ]
 }

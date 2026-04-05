@@ -1,9 +1,9 @@
 ---
-name: verify-implementation
-description: Use after execute-plan completes to independently verify the implementation. Reads only the plan document and inspects the codebase from scratch — information-isolated from the execution context. Produces a structured review document with PASS/FAIL verdict. Triggers when the user says "review the work", "verify the implementation", "check if the plan was executed correctly".
+name: review-execute
+description: Use after execute completes to independently verify the implementation. Reads only the plan document and inspects the codebase from scratch — information-isolated from the execution context. Produces a structured review document with PASS/FAIL verdict. Triggers when the user says "review the work", "verify the implementation", "check if the plan was executed correctly".
 ---
 
-# Verify Implementation
+# Review Work
 
 Independently verifies implementation results using only the plan document and the codebase. Receives no information from the execution process.
 
@@ -13,7 +13,7 @@ The reviewer shares no memory with the executor. The plan's stated goals and the
 
 ## Hard Gates
 
-1. **Do not receive execution context.** No logs from execute-plan, no worker output, no diffs, no task completion summaries, no conversation history. The only input is the plan file path.
+1. **Do not receive execution context.** No logs from execute, no worker output, no diffs, no task completion summaries, no conversation history. The only input is the plan file path.
 2. **Read the plan document directly.** Read the plan file from disk — not a summary or a passed-along description.
 3. **Run all tests yourself.** Do not trust previous execution results. Run the full test suite and every verification command specified in the plan.
 4. **Verdict is PASS or FAIL.** No conditional passes, no "almost done", no "only minor issues remain". Binary only.
@@ -22,14 +22,14 @@ The reviewer shares no memory with the executor. The plan's stated goals and the
 
 ## When To Use
 
-- After execute-plan execution is complete
+- After execute execution is complete
 - When the user says "review the work", "verify the implementation", "check if the plan was executed correctly"
 - When implementation is done but independent verification is needed
 
 ## When NOT To Use
 
-- While execute-plan is still in progress
-- When no plan document exists (use `craft-plan` first)
+- While execute is still in progress
+- When no plan document exists (use `planning` first)
 - When the goal is a general code review (this skill verifies "implementation against plan")
 
 ## Input
@@ -37,12 +37,18 @@ The reviewer shares no memory with the executor. The plan's stated goals and the
 The only input to this skill is the **plan file path**.
 
 ```
-docs/dev-kit/plans/YYYY-MM-DD-<feature-name>.md
+docs/sessions/<session-id>/plan.md
 ```
+
+### Session Discovery
+
+- If the user or resume skill provides a plan file path or session path, use it.
+- Otherwise, scan `docs/sessions/` for the most recent session where execute is completed and review-execute is not yet completed.
+- Read the plan from `docs/sessions/<session-id>/plan.md`
 
 The following must never be provided as input:
 
-- Execution logs or task completion summaries from execute-plan
+- Execution logs or task completion summaries from execute
 - Output or diffs from worker subagents
 - Validation results from validator subagents
 - Conversation history from the execution session
@@ -115,7 +121,7 @@ After reaching a verdict, write and save the review document.
 ### Save Location
 
 ```
-docs/dev-kit/reviews/YYYY-MM-DD-<feature-name>-review.md
+docs/sessions/<session-id>/review.md
 ```
 
 (User preferences for review location override this default.)
@@ -126,21 +132,21 @@ docs/dev-kit/reviews/YYYY-MM-DD-<feature-name>-review.md
 # [Feature Name] Review
 
 **Date:** YYYY-MM-DD HH:MM
-**Plan Document:** `docs/dev-kit/plans/YYYY-MM-DD-<feature-name>.md`
+**Plan Document:** `docs/sessions/<session-id>/plan.md`
 **Verdict:** PASS / FAIL
 
 ---
 
 ## 1. File Inspection Against Plan
 
-| Planned File   | Status                  | Notes   |
-| -------------- | ----------------------- | ------- |
+| Planned File | Status | Notes |
+|---|---|---|
 | `path/to/file` | OK / Missing / Mismatch | Details |
 
 ## 2. Test Results
 
-| Test Command       | Result      | Notes                   |
-| ------------------ | ----------- | ----------------------- |
+| Test Command | Result | Notes |
+|---|---|---|
 | `pytest tests/...` | PASS / FAIL | Error details if failed |
 
 **Full Test Suite:** PASS / FAIL (N passed, M failed)
@@ -153,14 +159,13 @@ docs/dev-kit/reviews/YYYY-MM-DD-<feature-name>-review.md
 - [ ] No changes outside plan scope
 
 **Findings:**
-
 - (Describe with file path and line number)
 
 ## 4. Git History
 
-| Planned Commit | Actual Commit         | Match         |
-| -------------- | --------------------- | ------------- |
-| `feat: add X`  | `abc1234 feat: add X` | OK / Mismatch |
+| Planned Commit | Actual Commit | Match |
+|---|---|---|
+| `feat: add X` | `abc1234 feat: add X` | OK / Mismatch |
 
 ## 5. Overall Assessment
 
@@ -171,6 +176,18 @@ docs/dev-kit/reviews/YYYY-MM-DD-<feature-name>-review.md
 - (If FAIL: list of items that need to be fixed)
 - (If PASS: record improvement suggestions if any)
 ```
+
+### State Update
+
+After the review document is saved, update the session index (`docs/sessions/<session-id>/index.md`):
+
+1. **Files table:** Add row `review.md | review-execute | created`
+2. **Pipeline Progress:** Check the `review-execute` checkbox
+3. **Execution Log:** Add entry `review-execute-completed | Verdict: PASS/FAIL`
+4. **Status and Next Action:**
+   - If **PASS:** Update Status to `completed`, Next Action to `"Session complete. Consider simplify-code for a final quality pass."`
+   - If **FAIL:** Keep Status as `in-progress`, Next Action to `"Fix issues and re-run execute, then review-execute."`
+5. **Last Updated:** Update the timestamp
 
 ## When To Stop
 
@@ -184,22 +201,22 @@ Stop immediately and notify the user in the following situations:
 
 ## Anti-Patterns
 
-| Anti-Pattern                                                 | Why It Fails                                                                              |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Reading execute-plan execution logs to verify                    | Information isolation violation. Anchors on the executor's framing                        |
-| Trusting previous test results instead of running tests      | Environment may have changed after execution. Not independent verification                |
-| Finding issues and fixing them directly                      | Violates separation of reviewer and implementer roles                                     |
-| Giving a "close enough, PASS" verdict                        | No conditional passes. If criteria are not met, it is FAIL                                |
-| Delivering review results verbally without saving a document | No verification record remains. Untraceable                                               |
-| Judging by criteria not in the plan                          | The reviewer judges only by the plan's criteria. Adding arbitrary standards is prohibited |
-| Receiving a plan summary and verifying from that             | Information is lost during summarization. The original must be read directly              |
+| Anti-Pattern | Why It Fails |
+|---|---|
+| Reading execute execution logs to verify | Information isolation violation. Anchors on the executor's framing |
+| Trusting previous test results instead of running tests | Environment may have changed after execution. Not independent verification |
+| Finding issues and fixing them directly | Violates separation of reviewer and implementer roles |
+| Giving a "close enough, PASS" verdict | No conditional passes. If criteria are not met, it is FAIL |
+| Delivering review results verbally without saving a document | No verification record remains. Untraceable |
+| Judging by criteria not in the plan | The reviewer judges only by the plan's criteria. Adding arbitrary standards is prohibited |
+| Receiving a plan summary and verifying from that | Information is lost during summarization. The original must be read directly |
 
 ## Minimal Checklist
 
 Self-check when review is complete:
 
 - [ ] Read the plan document directly from disk
-- [ ] Did not receive execute-plan execution results as input
+- [ ] Did not receive execute execution results as input
 - [ ] Ran all tests myself
 - [ ] Inspected all tasks in the plan
 - [ ] Verdict is either PASS or FAIL
@@ -210,7 +227,7 @@ Self-check when review is complete:
 After review is complete:
 
 - **PASS** → Report results to the user and suggest next steps (PR creation, deployment, etc.)
-- **FAIL** → Report failure items to the user. If fixes are needed, suggest transitioning to the `execute-plan` or `debug-systematically` skill
-- If the plan itself has issues → suggest returning to the `craft-plan` skill to revise the plan
+- **FAIL** → Report failure items to the user. If fixes are needed, suggest transitioning to the `execute` or `systematic-debugging` skill
+- If the plan itself has issues → suggest returning to the `planning` skill to revise the plan
 
 This skill itself **does not invoke the next skill.** It saves the review document, reports results, and lets the user decide the next step.

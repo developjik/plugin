@@ -1,13 +1,13 @@
 ---
-name: write-surgically
+name: karpathy
 description: Behavioral guardrails to prevent common LLM coding mistakes — enforces surgical changes, assumption verification, and scope discipline before and during implementation. Use when implementing features, modifying code, or when you notice yourself about to make changes without reading the existing code first.
 ---
 
-# Write Surgically
+# Karpathy Guidelines
 
 A preventive thinking discipline for code implementation. Activates before and during code writing to block the most common mistakes LLMs make when generating code.
 
-This is not about performance (that's `measure-performance`) or debugging (that's `debug-systematically`). This is about the act of writing code itself — reading before writing, changing only what's asked, verifying instead of assuming, and defining what "done" means before starting.
+This is not about performance (that's `rob-pike`) or debugging (that's `systematic-debugging`). This is about the act of writing code itself — reading before writing, changing only what's asked, verifying instead of assuming, and defining what "done" means before starting.
 
 ## Hard Gates
 
@@ -29,7 +29,7 @@ These rules have no exceptions.
 
 - Greenfield projects with no existing code to read (gates 1 and 3 still apply to dependencies)
 - Pure documentation changes
-- Performance optimization (use `measure-performance` instead)
+- Performance optimization (use `rob-pike` instead)
 
 ## The Five Rules
 
@@ -187,6 +187,6 @@ If any of these are not met, the implementation needs revision.
 
 After implementation is complete:
 
-- If AI-generated code smells remain → use `remove-slop` to run a corrective pass
-- If a bug is discovered → use `debug-systematically` to investigate
-- If performance is a concern → use `measure-performance` before optimizing
+- If AI-generated code smells remain → use `clean-ai-slop` to run a corrective pass
+- If a bug is discovered → use `systematic-debugging` to investigate
+- If performance is a concern → use `rob-pike` before optimizing

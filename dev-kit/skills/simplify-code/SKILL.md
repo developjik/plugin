@@ -1,9 +1,9 @@
 ---
-name: simplify-changes
-description: Review changed code for reuse opportunities, quality issues, and inefficiencies using three parallel review agents, then fix any issues found. Triggers when the user says "simplify", "clean up the code", "review the changes", or after execute-plan execution when code quality verification is needed.
+name: simplify-code
+description: Review changed code for reuse opportunities, quality issues, and inefficiencies using three parallel review agents, then fix any issues found. Triggers when the user says "simplify", "clean up the code", "review the changes", or after execute execution when code quality verification is needed.
 ---
 
-# Simplify Changes
+# Simplify
 
 Reviews all changed files through three parallel agents — reuse, quality, and efficiency — then fixes any issues found.
 
@@ -24,7 +24,7 @@ Changed code is the only review target. Each review dimension runs independently
 
 - After any implementation work when code quality verification is needed
 - When the user says "simplify", "clean up", "review the changes", or "check the code"
-- After execute-plan execution, before verify-implementation, as an intermediate quality pass
+- After execute execution, before review-execute, as an intermediate quality pass
 - When the user suspects duplicated logic, inefficiencies, or hacky patterns in recent changes
 
 ## When NOT To Use
@@ -32,7 +32,7 @@ Changed code is the only review target. Each review dimension runs independently
 - When there are no changes (no diff output)
 - When the user wants a full codebase audit (this skill reviews only the diff)
 - When the user wants only formatting or linting fixes
-- When the goal is plan verification (use `verify-implementation` instead)
+- When the goal is plan verification (use `review-execute` instead)
 
 ## Process
 
@@ -143,7 +143,7 @@ Provide this prompt to the agent:
 
 - No changes detected in Phase 1 — notify user and stop
 - All three agents report no findings — confirm code is clean
-- Fixes introduce test failures that cannot be resolved without expanding scope — stop, report the regression, suggest `debug-systematically`
+- Fixes introduce test failures that cannot be resolved without expanding scope — stop, report the regression, suggest `systematic-debugging`
 
 ## Anti-Patterns
 
@@ -173,8 +173,8 @@ Provide this prompt to the agent:
 
 After simplification is complete:
 
-- If this was a post-implementation quality pass → suggest transitioning to `verify-implementation` for independent plan verification
-- If issues were found and fixed → user may want to run `simplify-changes` again to verify the fixes are clean
-- If a bug was discovered during review → suggest `debug-systematically`
+- If this was a post-implementation quality pass → suggest transitioning to `review-execute` for independent plan verification
+- If issues were found and fixed → user may want to run `simplify-code` again to verify the fixes are clean
+- If a bug was discovered during review → suggest `systematic-debugging`
 
 This skill itself **does not invoke the next skill.** It reports results and lets the user decide the next step.

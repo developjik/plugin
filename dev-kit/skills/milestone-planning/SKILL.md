@@ -1,15 +1,15 @@
 ---
-name: decompose-milestones
-description: Decomposes complex, multi-day tasks into optimized milestones using parallel reviewer agents (ultraplan). Spawns 5 independent reviewers that analyze the problem from different angles, then synthesizes their findings into a milestone dependency DAG. Triggers when the user says "plan milestones", "break this into milestones", "ultraplan", or when orchestrate-execution harness needs milestone generation.
+name: milestone-planning
+description: Decomposes complex, multi-day tasks into optimized milestones using parallel reviewer agents (ultraplan). Spawns 5 independent reviewers that analyze the problem from different angles, then synthesizes their findings into a milestone dependency DAG. Triggers when the user says "plan milestones", "break this into milestones", "ultraplan", or when long-execute harness needs milestone generation.
 ---
 
-# Decompose Milestones
+# Milestone Planning (Ultraplan)
 
 Decomposes a complex task into milestones by spawning 5 parallel reviewer agents, synthesizing their independent analyses, and producing a milestone dependency DAG.
 
 ## Core Principle
 
-Milestones are the unit of orchestrate-executionning execution. A bad milestone decomposition cascades into days of wasted work. Therefore milestone generation must be adversarial — multiple independent perspectives must challenge each other before milestones are locked.
+Milestones are the unit of long-executening execution. A bad milestone decomposition cascades into days of wasted work. Therefore milestone generation must be adversarial — multiple independent perspectives must challenge each other before milestones are locked.
 
 ## Hard Gates
 
@@ -19,33 +19,44 @@ Milestones are the unit of orchestrate-executionning execution. A bad milestone 
 4. **Synthesis must address every reviewer's concern.** The synthesis agent must explicitly respond to each finding — accepted, rejected with reason, or deferred to a specific milestone.
 5. **Every milestone must have measurable success criteria.** "Working correctly" is not a criterion. Specific test commands, file existence checks, or behavioral assertions are required.
 6. **Milestone dependencies must form a DAG.** Circular dependencies are a plan failure. Every milestone must have a clear topological ordering.
-7. **Do not generate milestones for trivial tasks.** If the problem can be solved in a single craft-plan cycle (fewer than ~8 tasks), tell the user to use craft-plan directly.
+7. **Do not generate milestones for trivial tasks.** If the problem can be solved in a single planning cycle (fewer than ~8 tasks), tell the user to use planning directly.
 8. **Reviewer outputs must be passed verbatim to the synthesis agent.** Do not summarize, filter, or reframe. Copy each reviewer's full output into the designated placeholder. The main agent must not editorialize the handoff.
 
 ## When To Use
 
 - When the user presents a complex, multi-day task
-- When the orchestrate-execution harness needs milestone decomposition
+- When the long-execute harness needs milestone decomposition
 - When the user says "plan milestones", "break this into milestones", or "ultraplan"
 - When a task clearly requires multiple independent implementation phases
 
 ## When NOT To Use
 
-- Single-day tasks (use craft-plan directly)
+- Single-day tasks (use planning directly)
 - Tasks with fewer than ~8 implementation steps
-- When milestones are already defined and the user wants execution (use orchestrate-execution)
-- When work scope is still ambiguous (use `clarify-requirements` first)
+- When milestones are already defined and the user wants execution (use long-execute)
+- When work scope is still ambiguous (use clarify first)
 
 ## Input
 
 The skill requires a **clear problem statement** as input. This can come from:
 
-1. A Context Brief file produced by the `clarify-requirements` skill (preferred)
+1. A Context Brief file produced by the `clarify` skill (preferred)
 2. A direct, detailed request from the user (must include goal, scope, constraints)
 
-If the input is ambiguous, return to the `clarify-requirements` skill before proceeding.
+If the input is ambiguous, return to the `clarify` skill before proceeding.
 
 ## Process
+
+### Session Discovery
+
+This skill operates within a session created by the `clarify` skill at `docs/sessions/<session-id>/`.
+
+1. If the user or resume skill provides a session path, use it.
+2. Otherwise, scan `docs/sessions/` for the most recent session where:
+   - `clarify` is completed
+   - Workflow is `complex`
+   - `milestone-planning` is not yet completed
+3. Read `brief.md` from the session directory as the input Context Brief.
 
 ### Phase 1: Problem Framing
 
@@ -333,7 +344,7 @@ After dispatching all 5 reviewers, wait for all to complete. If any reviewer fai
 
 After all 5 reviewers complete, dispatch a **Synthesis Agent** that receives all 5 reviewer outputs and produces the final milestone plan.
 
-**Verbatim handoff rule (Hard Gate equivalent):** The main agent must copy each reviewer's full output into the designated `{..._OUTPUT}` placeholder without summarizing, filtering, reframing, or adding commentary. This is the same principle as the execute-plan validator's fixed template — the main agent has read all 5 outputs and may unconsciously bias the synthesis by selective framing. Verbatim copy eliminates this channel.
+**Verbatim handoff rule (Hard Gate equivalent):** The main agent must copy each reviewer's full output into the designated `{..._OUTPUT}` placeholder without summarizing, filtering, reframing, or adding commentary. This is the same principle as the execute validator's fixed template — the main agent has read all 5 outputs and may unconsciously bias the synthesis by selective framing. Verbatim copy eliminates this channel.
 
 **What must NOT happen during handoff:**
 - Summarizing a reviewer's output ("The feasibility analyst mainly said...")
@@ -457,12 +468,12 @@ After synthesis, the main agent **automatically appends** an Integration Verific
 - **Abort Point:** No (this is the final gate)
 ```
 
-**Verification Discovery:** During Phase 1 (Problem Framing), run the same verification discovery as craft-plan:
+**Verification Discovery:** During Phase 1 (Problem Framing), run the same verification discovery as planning:
 1. Search for e2e tests → integration tests → verification skills/agents → test suite → build+lint
 2. Record the result in the Problem Brief under a `Verification Strategy` section
 3. The Integration Verification Milestone uses this discovered verification as its primary check
 
-**If no verification infrastructure exists:** The Integration Verification Milestone's craft-plan phase (during orchestrate-execution execution) will create the necessary verification as Task 0, same as craft-plan's behavior.
+**If no verification infrastructure exists:** The Integration Verification Milestone's planning phase (during long-execute execution) will create the necessary verification as Task 0, same as planning's behavior.
 
 ### Phase 3.6: Independent DAG Validation
 
@@ -484,22 +495,22 @@ If validation fails: re-dispatch synthesis with the specific error(s) as additio
 3. Show the execution order with parallelization
 4. Show the total milestone count with the count guard warning if applicable
 5. Ask the user to approve, modify, or reject the milestone plan
-5. If approved: save the milestone plan to the harness state directory
+5. If approved: save the milestone plan to the session state directory
 6. If modifications requested: apply changes and re-present
 7. If rejected: return to Phase 1 with updated constraints
 
 ### Phase 5: Save Milestone Artifacts
 
-Save all artifacts to the harness state directory:
+Save all artifacts to the session state directory:
 
 ```
-docs/dev-kit/harness/<session-slug>/
+docs/sessions/<session-id>/
 ├── state.md                  # Master state file
 ├── milestones/
 │   ├── M1-<name>.md          # Individual milestone definition
 │   ├── M2-<name>.md
 │   └── ...
-└── reviews/
+└── meta/
     ├── feasibility.md
     ├── architecture.md
     ├── risk.md
@@ -508,21 +519,16 @@ docs/dev-kit/harness/<session-slug>/
     └── synthesis.md
 ```
 
-**state.md format:**
+**Updating state.md:**
 
-```markdown
-# Long Run State: [Session Name]
+The `clarify` skill already created `state.md` in the session directory. **Update the existing file** — do not create a new one. Apply the following changes:
 
-**Created:** YYYY-MM-DD HH:MM
-**Last Updated:** YYYY-MM-DD HH:MM
-**Status:** decompose-milestones-complete | executing | paused | completing | completed | failed
+1. Set `Workflow` to `complex`
+2. Fill in the `Milestones` table using the format below
+3. Update the `Files` table to reflect all files touched across all milestones
+4. Set `Next Action` to `long-execute` (or the appropriate next skill)
 
-**Verification Strategy:**
-- **Level:** [e2e | integration | skill/agent | test-suite | build-only]
-- **Command:** [exact verification command]
-- **What it validates:** [what passing proves]
-
-## Milestones
+**Milestones table format (reference for filling in):**
 
 | ID | Name | Status | Attempts | Dependencies | Plan File | Review File |
 |----|------|--------|----------|-------------|-----------|-------------|
@@ -533,12 +539,13 @@ docs/dev-kit/harness/<session-slug>/
 Status values: pending | planning | executing | validating | completed | failed | skipped
 Attempts: number of plan-execute-review cycles attempted (incremented at each Step 2-3 start)
 
-## Execution Log
+**state.md field definitions (reference):**
 
-| Timestamp | Event | Details |
-|-----------|-------|---------|
-| YYYY-MM-DD HH:MM | milestones-locked | N milestones approved by user |
-```
+- **Created:** (already set by clarify — do not overwrite)
+- **Last Updated:** YYYY-MM-DD HH:MM — update to current time
+- **Status:** set to `milestone-planning-complete`
+- **Verification Strategy:** Level, Command, What it validates — fill from Problem Brief
+- **Execution Log:** append a new row: `milestones-locked | N milestones approved by user`
 
 **Individual milestone file (M1-<name>.md) format:**
 
@@ -586,8 +593,8 @@ Attempts: number of plan-execute-review cycles attempted (incremented at each St
 | Running reviewers sequentially | Wastes time; reviewers are independent |
 | Skipping synthesis and just merging reviewer outputs | Conflicts go unresolved; milestone boundaries are incoherent |
 | Accepting milestones without measurable success criteria | Cannot validate completion; "done" becomes subjective |
-| Creating milestones too large (>12 tasks each) | Exceeds single craft-plan cycle; risk of context loss |
-| Creating milestones too small (1-2 tasks each) | Overhead of craft-plan + execute-plan + verify-implementation exceeds the work itself |
+| Creating milestones too large (>12 tasks each) | Exceeds single planning cycle; risk of context loss |
+| Creating milestones too small (1-2 tasks each) | Overhead of planning + execute + review-execute exceeds the work itself |
 | Creating more than 10 milestones without user approval | Compounding risk across milestones; likely needs project split |
 | Ignoring reviewer conflicts | Unresolved conflicts surface during execution when they're expensive to fix |
 | Not saving reviewer outputs | Loses the reasoning behind milestone decisions; cannot audit later |
@@ -605,14 +612,14 @@ Attempts: number of plan-execute-review cycles attempted (incremented at each St
 - [ ] First milestone is the minimum viable milestone
 - [ ] Integration Verification Milestone appended as final milestone
 - [ ] User approved the milestone plan
-- [ ] All artifacts saved to harness state directory
+- [ ] All artifacts saved to session state directory
 
 ## Transition
 
 After milestone planning is complete:
 
-- To begin execution → `orchestrate-execution` skill
-- If ambiguity discovered → return to `clarify-requirements` skill
-- If task is too small for milestones → use `craft-plan` directly
+- To begin execution → `long-execute` skill
+- If ambiguity discovered → return to `clarify` skill
+- If task is too small for milestones → use `planning` directly
 
 This skill itself **does not invoke the next skill.** It ends by presenting the milestone plan and letting the user choose the next step.

@@ -1,9 +1,9 @@
 ---
-name: clarify-requirements
+name: clarify
 description: Use when a user's request is vague, ambiguous, or underspecified. Launches an iterative Q&A loop to resolve ambiguity while a subagent explores the codebase in parallel. Outputs a clear, well-scoped context brief so the user can plan sharply. Triggers on "I want to...", "I need...", "let's build...", "can you help me...", "we should...", or any request where the full scope isn't immediately clear.
 ---
 
-# Clarify Requirements
+# Clarification Through Iterative Discovery
 
 Narrows vague user requests into well-defined work scopes. Runs questions and code exploration in parallel to bring the user to a state where they can plan sharply.
 
@@ -18,6 +18,61 @@ Ambiguity does not resolve in one pass. Multiple rounds of questions and code ex
 3. **Do not start implementation until you can say "this is clear enough."** Understanding must be complete at the codebase level.
 4. **Every question must narrow scope.** Do not repeat questions at the same level of ambiguity.
 5. **Never dump raw code exploration results on the user.** Summarize findings in the context of the user's question.
+
+## Session Initialization
+
+This skill creates a new session for every task. Session initialization happens before the Q&A loop begins.
+
+**Session ID format:** `YYYY-MM-DDTHH-MM-<slug>`
+
+- Use current date/time when clarify starts
+- Derive `<slug>` from the user's request topic: lowercase, hyphenated, max 3 words, most distinctive keyword
+- Examples: `2026-04-05T14-32-auth-login`, `2026-04-07T09-00-payment-migration`
+
+**Process:**
+
+1. Generate the session ID from current timestamp and request topic
+2. Create the session directory: `docs/sessions/<session-id>/`
+3. Create `state.md` with initial content:
+
+```markdown
+# Session: [Topic Title]
+
+**Session ID:** <session-id>
+**Created:** YYYY-MM-DD HH:MM
+**Last Updated:** YYYY-MM-DD HH:MM
+**Workflow:** (to be determined by Complexity Assessment)
+**Status:** in-progress
+
+## Pipeline Progress
+
+- [ ] clarify
+- [ ] planning
+- [ ] execute
+- [ ] review-execute
+
+## Verification Strategy
+
+(to be discovered during planning phase)
+
+## Files
+
+| File | Phase | Status |
+|------|-------|--------|
+| brief.md | clarify | — |
+
+## Next Action
+
+Clarification in progress. Complete Q&A loop to produce brief.md.
+
+## Execution Log
+
+| Timestamp | Event | Details |
+|-----------|-------|---------|
+| YYYY-MM-DD HH:MM | session-created | Session initialized from clarify |
+```
+
+4. The `Workflow` field is set after the Complexity Assessment is complete (simple or complex).
 
 ## When To Use
 
@@ -92,7 +147,6 @@ prompt: |
 **Processing subagent results:**
 
 When the subagent returns findings:
-
 1. Cross-validate against the user's answers
 2. If technical constraints unknown to the user are discovered, reflect them in the next question
 3. If a conflict with existing code is likely, notify the user
@@ -141,89 +195,91 @@ When ambiguity is sufficiently resolved, present the user with a Context Brief. 
 ## Context Brief: [Task Title]
 
 ### Goal
-
 [One-sentence task goal]
 
 ### Scope
-
 - **In scope**: [Included work]
 - **Out of scope**: [Explicitly excluded work]
 
 ### Technical Context
-
 [Technical facts discovered through code exploration]
-
 - Current implementation state
 - Affected areas
 - Existing patterns to follow
 
 ### Constraints
-
 [Identified constraints]
-
 - External constraints
 - Technical constraints
 - Time/priority constraints
 
 ### Success Criteria
-
 [Specific criteria for the completed state]
 
 ### Open Questions (if any)
-
 [Questions still open — unresolved but not blocking]
 
 ### Complexity Assessment
 
 Assess task complexity using these 5 signals. Score each signal, then determine the routing.
 
-| Signal                   | Low (1)                          | Medium (2)                              | High (3)                                                 |
-| ------------------------ | -------------------------------- | --------------------------------------- | -------------------------------------------------------- |
-| **Scope breadth**        | Single feature or component      | 2-3 related components                  | 4+ components or cross-cutting concerns                  |
-| **File impact**          | ≤3 files                         | 4-8 files                               | 9+ files or across 3+ directories                        |
-| **Interface boundaries** | Works within existing interfaces | Extends existing interfaces             | Defines new interfaces or modifies contracts             |
-| **Dependency depth**     | No ordering constraints          | Linear dependency chain                 | Branching dependencies requiring DAG                     |
-| **Risk surface**         | No integration risk              | Internal integration between components | External systems, schema changes, backward compatibility |
+| Signal | Low (1) | Medium (2) | High (3) |
+|--------|---------|-----------|----------|
+| **Scope breadth** | Single feature or component | 2-3 related components | 4+ components or cross-cutting concerns |
+| **File impact** | ≤3 files | 4-8 files | 9+ files or across 3+ directories |
+| **Interface boundaries** | Works within existing interfaces | Extends existing interfaces | Defines new interfaces or modifies contracts |
+| **Dependency depth** | No ordering constraints | Linear dependency chain | Branching dependencies requiring DAG |
+| **Risk surface** | No integration risk | Internal integration between components | External systems, schema changes, backward compatibility |
 
 **Score:** [sum of signals, range 5-15]
 **Verdict:** [Simple (5-8) | Complex (9-15)]
 **Rationale:** [1-2 sentences explaining the dominant complexity factor]
 
 ### Suggested Next Step
-
 [Auto-determined by Complexity Assessment verdict — see Routing Rules below]
 ```
 
 **Save the Context Brief to a file:**
 
 ```
-docs/dev-kit/context/YYYY-MM-DD-<topic>-brief.md
+docs/sessions/<session-id>/brief.md
 ```
 
-(Follow a user-specified path instead if they request a different location.)
+(User preferences for brief location override this default.)
 
-Show the Context Brief in the conversation first. Save it only after the user approves it. This file feeds directly into the `craft-plan` skill.
+Present the Context Brief to the user first. Once the user approves, save it to the file. This file is used directly as input to the `planning` or `milestone-planning` skill.
+
+**After saving brief.md, update state.md:**
+
+- Set `brief.md` row in Files table to `Status: created`
+- Set `Pipeline Progress > clarify` checkbox to `[x]`
+- Set `Workflow` field based on Complexity Assessment verdict (`simple` or `complex`)
+- Add execution log entry: `YYYY-MM-DD HH:MM | clarify-completed | brief.md saved`
+- Update `Next Action` based on verdict:
+  - Simple: `"Run planning. Read brief.md from docs/sessions/<session-id>/"`
+  - Complex: `"Run milestone-planning. Read brief.md from docs/sessions/<session-id>/"`
+- Update `Last Updated` timestamp
 
 ## Red Flags
 
 Stop and recalibrate if any of these occur:
 
-| Situation                                              | Response                                                                                                                            |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| User says "just figure it out"                         | Warn: starting before ambiguity is resolved leads to a high probability of rework. At minimum, confirm purpose and success criteria |
-| Same topic questioned 3+ times                         | The user genuinely doesn't know. Separate knowns from unknowns, present assumptions for the unknowns, and confirm                   |
-| Subagent finds conflicting existing code               | Notify the user immediately. Conflicts with existing structure require a design decision                                            |
-| Request decomposes into multiple independent sub-tasks | Show the decomposition to the user and propose prioritizing one at a time                                                           |
+| Situation | Response |
+|-----------|----------|
+| User says "just figure it out" | Warn: starting before ambiguity is resolved leads to a high probability of rework. At minimum, confirm purpose and success criteria |
+| Same topic questioned 3+ times | The user genuinely doesn't know. Separate knowns from unknowns, present assumptions for the unknowns, and confirm |
+| Subagent finds conflicting existing code | Notify the user immediately. Conflicts with existing structure require a design decision |
+| Request decomposes into multiple independent sub-tasks | Show the decomposition to the user and propose prioritizing one at a time |
 
 ## Anti-Patterns
 
-| Anti-Pattern                             | Why It Fails                                                            |
-| ---------------------------------------- | ----------------------------------------------------------------------- |
-| Five questions in one message            | The user gives shallow answers. Ambiguity persists.                     |
-| Questions without code exploration       | Scope can narrow in a direction that conflicts with existing code       |
+| Anti-Pattern | Why It Fails |
+|--------------|-------------|
+| Five questions in one message | The user gives shallow answers. Ambiguity persists. |
+| Questions without code exploration | Scope can narrow in a direction that conflicts with existing code |
 | Showing full subagent output to the user | Too much noise. Provide only the summary relevant to the user's context |
-| Deciding "that's enough" unilaterally    | Always present the Context Brief to the user and get confirmation       |
-| Starting implementation                  | This skill ends at "clear context," not "implemented code"              |
+| Deciding "that's enough" unilaterally | Always present the Context Brief to the user and get confirmation |
+| Starting implementation | This skill ends at "clear context," not "implemented code" |
 
 ## Minimal Checklist
 
@@ -238,40 +294,40 @@ Self-check at the end of each cycle:
 
 After the Context Brief is approved, the **Complexity Assessment verdict** determines the next skill:
 
-| Verdict                  | Route                | Rationale                                                                           |
-| ------------------------ | -------------------- | ----------------------------------------------------------------------------------- |
-| **Simple** (score 5-8)   | `craft-plan`      | Task fits in a single plan cycle. Direct planning is sufficient.                    |
-| **Complex** (score 9-15) | `decompose-milestones` | Task requires multiple plan cycles. Milestone decomposition needed before planning. |
+| Verdict | Route | Rationale |
+|---------|-------|-----------|
+| **Simple** (score 5-8) | `planning` | Task fits in a single plan cycle. Direct planning is sufficient. |
+| **Complex** (score 9-15) | `milestone-planning` | Task requires multiple plan cycles. Milestone decomposition needed before planning. |
 
-**Override:** The user can always override the routing. If the user says "just plan it" for a complex task, route to `craft-plan`. If the user says "break it into milestones" for a simple task, route to `decompose-milestones`.
+**Override:** The user can always override the routing. If the user says "just plan it" for a complex task, route to `planning`. If the user says "break it into milestones" for a simple task, route to `milestone-planning`.
 
-**Edge case (score 8-9):** Present both options to the user with a recommendation. Example: "This scores 9 — borderline complex. I recommend decompose-milestones because [dominant factor], but craft-plan could work if [condition]. Which do you prefer?"
+**Edge case (score 8-9):** Present both options to the user with a recommendation. Example: "This scores 9 — borderline complex. I recommend milestone-planning because [dominant factor], but planning could work if [condition]. Which do you prefer?"
 
 The "Suggested Next Step" field in the Context Brief must reflect this routing:
 
-- Simple: "Proceed to `craft-plan` — task fits in a single plan cycle."
-- Complex: "Proceed to `decompose-milestones` — task requires milestone decomposition for multi-phase execution."
-- Borderline: "Recommend `decompose-milestones` (score 9), but `craft-plan` is viable if [condition]. User choice needed."
+- Simple: "Proceed to `planning`. Session: `docs/sessions/<session-id>/`"
+- Complex: "Proceed to `milestone-planning`. Session: `docs/sessions/<session-id>/`"
+- Borderline: "Recommend `milestone-planning` (score 9), but `planning` is viable if [condition]. User choice needed. Session: `docs/sessions/<session-id>/`"
 
 ## Transition
 
 Once the Context Brief is approved by the user, route based on the Complexity Assessment:
 
-- **Simple** (score 5-8) → `craft-plan` skill — single-cycle implementation planning
-- **Complex** (score 9-15) → `decompose-milestones` skill — multi-phase milestone decomposition, then `orchestrate-execution` for execution
-- **Borderline** (score 8-9) → present both options with recommendation, user decides
-- If further exploration is needed → continue the `clarify-requirements` skill's Q&A loop
+- **Simple** (score 5-8) → `planning` skill — single-cycle implementation planning. Session: `docs/sessions/<session-id>/`
+- **Complex** (score 9-15) → `milestone-planning` skill — multi-phase milestone decomposition, then `long-execute` for execution. Session: `docs/sessions/<session-id>/`
+- **Borderline** (score 8-9) → present both options with recommendation, user decides. Session: `docs/sessions/<session-id>/`
+- If further exploration is needed → continue clarify Q&A loop
 - If the scope is already trivial and planning is unnecessary → direct implementation
 
 This skill itself **does not invoke the next skill.** It ends by presenting the Context Brief, saving it to a file, and suggesting the routed next step.
 
-**Context Brief → craft-plan mapping:**
+**Context Brief → planning 매핑:**
 
-| Context Brief field | craft-plan input |
-| ------------------- | ------------------- |
-| Goal | Plan header goal |
-| Scope (In/Out) | Plan header work scope |
-| Technical Context | Architecture, tech stack, and file structure basis |
-| Constraints | Constraints reflected during task decomposition |
-| Success Criteria | Self-review criteria |
-| Open Questions | Assumptions to capture and confirm with the user |
+| Context Brief 필드 | planning 입력 |
+|---|---|
+| Goal | 계획 헤더의 "목표" |
+| Scope (In/Out) | 계획 헤더의 "작업 범위" |
+| Technical Context | "아키텍처" + "기술 스택" + 파일 구조 매핑의 기반 |
+| Constraints | 태스크 분해 시 제약사항 반영 |
+| Success Criteria | Self-Review 기준 |
+| Open Questions | 계획에 가정(assumption)으로 반영 후 사용자 확인 |

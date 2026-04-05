@@ -1,48 +1,24 @@
 {
   "name": "dev-kit",
-  "version": "1.2.0",
-  "description": "Disciplined local development workflows for planning, execution, debugging, optimization, and cleanup.",
+  "version": "0.1.0",
+  "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
   "author": {
-    "name": "developjik"
+    "name": "developjik",
+    "email": "developjik@users.noreply.github.com",
+    "url": "https://github.com/developjik"
   },
-  "homepage": "https://github.com/developjik/plugin/tree/main/dev-kit",
-  "repository": "https://github.com/developjik/plugin",
+  "homepage": "https://github.com/developjik/logistics-plugin",
+  "repository": "https://github.com/developjik/logistics-plugin",
   "license": "MIT",
   "keywords": [
+    "development",
+    "workflow",
     "planning",
     "debugging",
-    "optimization",
     "code-quality",
-    "workflow",
-    "automation"
+    "claude-plugin"
   ],
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json",
-  "mcpServers": "./.mcp.json",
-  "apps": "./.app.json",
-  "interface": {
-    "displayName": "Dev Kit",
-    "shortDescription": "Disciplined planning, execution, debugging, and cleanup workflows.",
-    "longDescription": "Local plugin bundling reusable development skills for clarification, plan execution, milestone orchestration, debugging, optimization, and AI-code cleanup.",
-    "developerName": "developjik",
-    "category": "Productivity",
-    "capabilities": [
-      "Interactive",
-      "Read",
-      "Write"
-    ],
-    "defaultPrompt": [
-      "Help me clarify this vague request into a well-scoped brief.",
-      "Write an executable implementation plan for this task.",
-      "Run this implementation plan and validate each task independently.",
-      "Review the implementation against the plan and give me a PASS/FAIL verdict.",
-      "Break this project into milestones with dependency ordering.",
-      "Execute all milestones with checkpoints and recovery.",
-      "Implement this change surgically — minimum edits, no scope creep.",
-      "Simplify the changed code for reuse, quality, and efficiency.",
-      "Clean up the AI-generated code smells without changing behavior.",
-      "Debug this failing test using a reproduce-first workflow.",
-      "Find out where this code is actually slow before optimizing."
-    ]
-  }
+  "mcpServers": "./.mcp.json"
 }
