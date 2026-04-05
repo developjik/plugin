@@ -1,14 +1,14 @@
 {
   "name": "dev-kit",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
   "author": {
     "name": "developjik",
     "email": "developjik@users.noreply.github.com",
     "url": "https://github.com/developjik"
   },
-  "homepage": "https://github.com/developjik/logistics-plugin",
-  "repository": "https://github.com/developjik/logistics-plugin",
+  "homepage": "https://github.com/developjik/plugin/tree/main/dev-kit",
+  "repository": "https://github.com/developjik/plugin",
   "license": "MIT",
   "keywords": [
     "development",
@@ -19,22 +19,22 @@
     "codex-plugin"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks.json",
+  "hooks": "./hooks/hooks.json",
   "mcpServers": "./.mcp.json",
   "apps": "./.app.json",
   "interface": {
     "displayName": "Dev Kit",
     "shortDescription": "Structured development workflow: clarify, plan, execute, review, debug",
-    "longDescription": "A comprehensive development workflow plugin providing 11 skills covering the full development lifecycle — from requirement clarification and milestone planning through execution, independent review, debugging, and code quality improvement. Includes discipline frameworks (Karpathy rules, Rob Pike rules) and AI-slop cleanup.",
+    "longDescription": "A comprehensive development workflow plugin providing 12 skills covering the full development lifecycle — from requirement clarification and milestone planning through execution, independent review, debugging, and code quality improvement. Includes discipline frameworks (Karpathy rules, Rob Pike rules) and AI-slop cleanup.",
     "developerName": "developjik",
     "category": "Developer Tools",
     "capabilities": [
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/developjik/logistics-plugin",
-    "privacyPolicyURL": "https://github.com/developjik/logistics-plugin/blob/main/PRIVACY.md",
-    "termsOfServiceURL": "https://github.com/developjik/logistics-plugin/blob/main/TERMS.md",
+    "websiteURL": "https://github.com/developjik/plugin",
+    "privacyPolicyURL": "https://github.com/developjik/plugin/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/developjik/plugin/blob/main/TERMS.md",
     "defaultPrompt": [
       "Clarify this task and create a plan for implementation.",
       "Debug this failing test with systematic root-cause analysis.",
@@ -42,11 +42,6 @@
     ],
     "brandColor": "#6366F1",
     "composerIcon": "./assets/icon.png",
-    "logo": "./assets/logo.png",
-    "screenshots": [
-      "./assets/screenshot1.png",
-      "./assets/screenshot2.png",
-      "./assets/screenshot3.png"
-    ]
+    "logo": "./assets/logo.png"
   }
 }

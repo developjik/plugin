@@ -1,14 +1,14 @@
 {
   "name": "dev-kit",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
   "author": {
     "name": "developjik",
     "email": "developjik@users.noreply.github.com",
     "url": "https://github.com/developjik"
   },
-  "homepage": "https://github.com/developjik/logistics-plugin",
-  "repository": "https://github.com/developjik/logistics-plugin",
+  "homepage": "https://github.com/developjik/plugin/tree/main/dev-kit",
+  "repository": "https://github.com/developjik/plugin",
   "license": "MIT",
   "keywords": [
     "development",
