@@ -9,7 +9,7 @@ Decomposes a complex task into milestones by spawning 5 parallel reviewer agents
 
 ## Core Principle
 
-Milestones are the unit of long-executening execution. A bad milestone decomposition cascades into days of wasted work. Therefore milestone generation must be adversarial — multiple independent perspectives must challenge each other before milestones are locked.
+Milestones are the unit of long-execute execution. A bad milestone decomposition cascades into days of wasted work. Therefore milestone generation must be adversarial — multiple independent perspectives must challenge each other before milestones are locked.
 
 ## Hard Gates
 
@@ -495,28 +495,40 @@ If validation fails: re-dispatch synthesis with the specific error(s) as additio
 3. Show the execution order with parallelization
 4. Show the total milestone count with the count guard warning if applicable
 5. Ask the user to approve, modify, or reject the milestone plan
-5. If approved: save the milestone plan to the session state directory
-6. If modifications requested: apply changes and re-present
-7. If rejected: return to Phase 1 with updated constraints
+6. If approved: save the milestone plan to the session state directory
+7. If modifications requested: apply changes and re-present
+8. If rejected: return to Phase 1 with updated constraints
 
 ### Phase 5: Save Milestone Artifacts
 
-Save all artifacts to the session state directory:
+Save all artifacts to the session state directory.
+
+**Before saving files, create the following subdirectories if they do not already exist:**
+
+- `docs/sessions/<session-id>/plans/` — per-milestone plan documents (populated by long-execute)
+- `docs/sessions/<session-id>/reviews/` — per-milestone review documents (populated by long-execute)
+- `docs/sessions/<session-id>/checkpoints/` — per-milestone checkpoint files (populated by long-execute)
+
+**Complete directory structure:**
 
 ```
 docs/sessions/<session-id>/
 ├── state.md                  # Master state file
+├── brief.md                  # Context Brief (created by clarify)
 ├── milestones/
 │   ├── M1-<name>.md          # Individual milestone definition
 │   ├── M2-<name>.md
 │   └── ...
-└── meta/
-    ├── feasibility.md
-    ├── architecture.md
-    ├── risk.md
-    ├── dependency.md
-    ├── user-value.md
-    └── synthesis.md
+├── meta/
+│   ├── feasibility.md        # Reviewer outputs
+│   ├── architecture.md
+│   ├── risk.md
+│   ├── dependency.md
+│   ├── user-value.md
+│   └── synthesis.md
+├── plans/                    # Per-milestone plan documents (written by long-execute)
+├── reviews/                  # Per-milestone review documents (written by long-execute)
+└── checkpoints/              # Per-milestone checkpoint files (written by long-execute)
 ```
 
 **Updating state.md:**
@@ -543,7 +555,8 @@ Attempts: number of plan-execute-review cycles attempted (incremented at each St
 
 - **Created:** (already set by clarify — do not overwrite)
 - **Last Updated:** YYYY-MM-DD HH:MM — update to current time
-- **Status:** set to `milestone-planning-complete`
+- **Status:** keep as `in-progress` (long-execute will manage session-level status)
+- **Pipeline Progress:** Check the `milestone-planning` checkbox
 - **Verification Strategy:** Level, Command, What it validates — fill from Problem Brief
 - **Execution Log:** append a new row: `milestones-locked | N milestones approved by user`
 

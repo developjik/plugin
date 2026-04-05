@@ -15,7 +15,7 @@ This skill removes those smells systematically, one category at a time, without 
 
 These rules have no exceptions.
 
-1. **Lock behavior before cleaning.** Run existing tests. If coverage is insufficient, add regression tests for the code you're about to touch. No test coverage, no cleanup.
+1. **Lock behavior before cleaning.** Run existing tests. If coverage is insufficient, add regression tests for the code you're about to touch. If no test infrastructure exists, create minimal smoke tests that verify the code at least imports and runs without errors before starting cleanup. No test coverage, no cleanup.
 2. **One smell category per pass.** Do not mix dead code removal with naming fixes. Complete one pass, verify, then start the next.
 3. **Run tests after every pass.** If tests fail, revert the pass and investigate. Do not proceed to the next category.
 4. **Stay in scope.** Only touch files that were generated or modified by AI. Do not expand into "nearby" code that looks like it could use improvement.
@@ -27,6 +27,7 @@ These rules have no exceptions.
 - After any significant code generation session
 - When reviewing AI-generated PRs
 - When the user explicitly asks to clean up or deslop code
+- **Disambiguation:** If the user says "clean up" without further context, prefer this skill when the code was AI-generated. For general code quality review (duplicated logic, hacky patterns, inefficiencies), use `simplify-code` instead.
 
 ## When NOT To Use
 

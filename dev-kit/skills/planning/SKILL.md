@@ -58,8 +58,13 @@ If no Context Brief file exists (user directly requests a plan): confirm essenti
 ### Save Location
 
 ```
-docs/sessions/<session-id>/plan.md
+Simple workflow:  docs/sessions/<session-id>/plan.md
+Complex workflow: docs/sessions/<session-id>/plans/M<N>-<name>.md
 ```
+
+Determine path from the session's `state.md`:
+- If `Workflow` is `simple` → save as `plan.md` in the session root
+- If `Workflow` is `complex` (called by `long-execute` for a specific milestone) → save in `plans/` subdirectory with the milestone prefix
 
 (User preferences for plan location override this default.)
 
@@ -303,7 +308,7 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/sessions/<session-id>/plan.md`."**
+**"Plan complete and saved to `[path from Save Location section above]`."**
 
 **"How would you like to proceed?"**
 
@@ -315,10 +320,14 @@ After saving the plan, offer execution choice:
 
 After saving the plan, update `state.md`:
 
-- Add to Files table: `plan.md | planning | created`
+- Add to Files table (use the same path determined by the Save Location rules above):
+  - Simple workflow: `plan.md | planning | created`
+  - Complex workflow: `plans/M<N>-<name>.md | planning | created`
 - Check the `planning` checkbox in Pipeline Progress
-- Add execution log entry: `planning-completed | plan.md saved`
-- Update Next Action: `"Run execute. Read plan.md from docs/sessions/<session-id>/plan.md"`
+- Add execution log entry: `planning-completed | [filename] saved`
+- Update Next Action based on workflow type:
+  - Simple: `"Run execute. Read plan.md from docs/sessions/<session-id>/plan.md"`
+  - Complex: `"Run execute. Read plans/M<N>-<name>.md from docs/sessions/<session-id>/plans/M<N>-<name>.md"`
 - Update Last Updated timestamp
 
 ## Anti-Patterns

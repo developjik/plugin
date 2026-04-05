@@ -179,7 +179,7 @@ Rules:
 - It must pass via the same path after the fix.
 - The test name must reveal what broke.
 
-If an automated test can be used, also apply the `test-driven-development` skill.
+Write the test using a TDD approach: the test must fail before the fix and pass after.
 
 ### Phase 6. Implement A Single Fix
 

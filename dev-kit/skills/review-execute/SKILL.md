@@ -37,14 +37,15 @@ The reviewer shares no memory with the executor. The plan's stated goals and the
 The only input to this skill is the **plan file path**.
 
 ```
-docs/sessions/<session-id>/plan.md
+Simple workflow:  docs/sessions/<session-id>/plan.md
+Complex workflow: docs/sessions/<session-id>/plans/M<N>-<name>.md
 ```
 
 ### Session Discovery
 
 - If the user or resume skill provides a plan file path or session path, use it.
 - Otherwise, scan `docs/sessions/` for the most recent session where execute is completed and review-execute is not yet completed.
-- Read the plan from `docs/sessions/<session-id>/plan.md`
+- Read the plan file path from the session's `state.md` Files table or Next Action field.
 
 The following must never be provided as input:
 
@@ -121,8 +122,13 @@ After reaching a verdict, write and save the review document.
 ### Save Location
 
 ```
-docs/sessions/<session-id>/review.md
+Simple workflow:  docs/sessions/<session-id>/review.md
+Complex workflow: docs/sessions/<session-id>/reviews/M<N>-<name>-review.md
 ```
+
+Determine path from the session's `state.md` `Workflow` field:
+- If `Workflow` is `simple` → use the simple path
+- If `Workflow` is `complex` → use the per-milestone path in `reviews/`
 
 (User preferences for review location override this default.)
 
@@ -179,13 +185,16 @@ docs/sessions/<session-id>/review.md
 
 ### State Update
 
-After the review document is saved, update the session index (`docs/sessions/<session-id>/index.md`):
+After the review document is saved, update the session state file (`docs/sessions/<session-id>/state.md`):
 
-1. **Files table:** Add row `review.md | review-execute | created`
+1. **Files table:** Add row using the same path determined by the Save Location rules above:
+   - Simple workflow: `review.md | review-execute | created`
+   - Complex workflow: `reviews/M<N>-<name>-review.md | review-execute | created`
 2. **Pipeline Progress:** Check the `review-execute` checkbox
 3. **Execution Log:** Add entry `review-execute-completed | Verdict: PASS/FAIL`
 4. **Status and Next Action:**
-   - If **PASS:** Update Status to `completed`, Next Action to `"Session complete. Consider simplify-code for a final quality pass."`
+   - If **PASS** and `Workflow` is `simple`: Update Status to `completed`, Next Action to `"Session complete. Consider simplify-code for a final quality pass."`
+   - If **PASS** and `Workflow` is `complex`: Keep Status as `in-progress`, Next Action to `"Return to long-execute. Milestone review passed."` — long-execute manages its own state transitions.
    - If **FAIL:** Keep Status as `in-progress`, Next Action to `"Fix issues and re-run execute, then review-execute."`
 5. **Last Updated:** Update the timestamp
 

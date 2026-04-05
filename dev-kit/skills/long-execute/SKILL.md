@@ -61,7 +61,12 @@ This skill operates within a session at `docs/sessions/<session-id>/`.
    - Which milestones are completed?
    - Which milestones are ready to start (all dependencies met)?
    - Is this a fresh start or a resume?
-5. Present status to the user:
+5. Ensure session subdirectories exist (defensive check):
+   - Create `docs/sessions/<session-id>/plans/` if missing
+   - Create `docs/sessions/<session-id>/reviews/` if missing
+   - Create `docs/sessions/<session-id>/checkpoints/` if missing
+   (These should have been created by milestone-planning; this is a safety check for resume/correction scenarios.)
+6. Present status to the user:
 
 ```
 ## Long Run Status: [Session Name]
@@ -75,7 +80,7 @@ In progress: M3 (executing)
 Pending: M4, M5
 ```
 
-6. Ask user to confirm: continue, pause, or abort.
+7. Ask user to confirm: continue, pause, or abort.
 
 ### Phase 2: Milestone Execution Loop
 
@@ -126,10 +131,10 @@ Before starting a milestone:
    - Do NOT include: execution logs, review documents, worker/validator output, or full checkpoint contents
    - **Note:** Context Briefs composed from milestone definitions omit the Complexity Assessment section, since routing has already been determined by the milestone-planning phase. The brief goes directly to planning without re-routing.
 2. Invoke the `planning` skill pattern:
-   - Create a plan document at `plans/M<N>-<name>.md`
+   - Create a plan document at `docs/sessions/<session-id>/plans/M<N>-<name>.md`
    - The plan must satisfy all milestone success criteria
    - The plan must not modify files outside the milestone's scope
-3. Update state.md: record plan file path for this milestone
+3. Update state.md: record plan file path for this milestone (use full path: `docs/sessions/<session-id>/plans/M<N>-<name>.md`)
 4. **User gate:** Present the plan and ask for approval before execution
 
 #### Step 2-3: Run Plan Phase
@@ -151,6 +156,7 @@ Before starting a milestone:
 2. Invoke the `review-execute` skill pattern:
    - Information-isolated review against the plan document
    - Binary PASS/FAIL verdict
+   - Save review document to `docs/sessions/<session-id>/reviews/M<N>-<name>-review.md`
 3. **If PASS:**
    - Update state.md: set milestone status to `completed`
    - Write checkpoint file (see Checkpoint Format below)
@@ -197,7 +203,7 @@ The milestone passed its own review-execute (internal correctness) but breaks in
 
 After a milestone passes review:
 
-Write `checkpoints/M<N>-checkpoint.md`:
+Write `docs/sessions/<session-id>/checkpoints/M<N>-checkpoint.md`:
 
 ```markdown
 # Checkpoint: M<N> — [Milestone Name]
@@ -222,6 +228,8 @@ Write `checkpoints/M<N>-checkpoint.md`:
 [Brief description of system state — what works now that didn't before]
 ```
 
+**Note:** Paths in the Plan File and Review File fields above are relative to the session directory (`docs/sessions/<session-id>/`).
+
 ### Phase 3: Parallel Milestone Execution
 
 When multiple milestones have all dependencies satisfied and no file conflicts:
@@ -234,7 +242,7 @@ When multiple milestones have all dependencies satisfied and no file conflicts:
    - Each milestone runs execute → review-execute (plan already approved in step 3)
    - Each runs in a worktree (`isolation: "worktree"`) to prevent file conflicts
    - After both complete and pass review, merge worktrees back
-4. If either fails: handle independently (the other can continue if no dependency)
+6. If either fails: handle independently (the other can continue if no dependency)
 
 **Worktree merge protocol:**
 1. Both milestones pass review in their respective worktrees
@@ -283,7 +291,7 @@ After all milestones are completed (including the Integration Verification Miles
 [Aggregated list across all milestones]
 ```
 
-4. Present to user and suggest `simplify-code` for a final code quality pass
+7. Present to user and suggest `simplify-code` for a final code quality pass
 
 ## Recovery Protocol
 
@@ -336,7 +344,7 @@ When a user chooses to skip a failed milestone:
 If a single milestone's total active time (from planning start to review completion) becomes excessive:
 
 1. **Soft limit:** If a milestone has been in `planning` or `executing` status for more than what appears to be a proportionally large share of the overall work, pause and report to user: "Milestone M3 has been in progress for an extended period. Continue, re-scope, or abort?"
-2. **Hard limit on attempts:** The 3-attempt limit (F1) bounds retry loops. But if even a single attempt's planning generates more than 15 tasks, pause and report: "This milestone's plan has N tasks — it may be too large for a single milestone. Consider splitting."
+2. **Hard limit on attempts:** The 3-attempt limit (Hard Gate #3) bounds retry loops. But if even a single attempt's planning generates more than 15 tasks, pause and report: "This milestone's plan has N tasks — it may be too large for a single milestone. Consider splitting."
 3. **Purpose:** Prevent a single runaway milestone from consuming the entire execution budget or running indefinitely on flaky tests.
 
 ## Context Window Management
@@ -344,7 +352,7 @@ If a single milestone's total active time (from planning start to review complet
 Long-running sessions will hit context window limits. Claude Code automatically compresses old messages (context collapse). The harness must be designed to survive this:
 
 1. **Never rely on conversation memory for state.** All state lives in `state.md` and milestone files on disk. If the context is compressed, the harness re-reads state files — no information is lost.
-2. **Each milestone is a fresh context boundary.** When starting a new milestone's planning, the worker subagent starts with a clean context. It receives only the milestone definition and completed predecessor context (see F8 contract) — not the full conversation history.
+2. **Each milestone is a fresh context boundary.** When starting a new milestone's planning, the worker subagent starts with a clean context. It receives only the milestone definition and completed predecessor context (see Step 2-5 Cross-Milestone Integration Check) — not the full conversation history.
 3. **Checkpoint files are the source of truth.** If context is lost mid-milestone, recovery reads the checkpoint files, not compressed conversation summaries.
 4. **Avoid accumulating large inline state.** Do not build up a running summary of all milestones in the conversation. Instead, reference state.md and checkpoint files by path.
 

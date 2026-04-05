@@ -68,7 +68,7 @@ Before reviewing the plan, discover what the project offers for verification and
 4. If no issues: create tasks via TaskCreate and proceed
 
 **Update `state.md` after Step 1 completes:**
-- Update Pipeline Progress execute checkbox to show in-progress (e.g., `[/]` or `[~]`)
+- Update Pipeline Progress execute checkbox to show in-progress: `[-]`
 - Add execution log entry: `execute-started | began task execution`
 - Update Last Updated timestamp
 

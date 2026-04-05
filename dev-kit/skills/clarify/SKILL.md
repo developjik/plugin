@@ -47,9 +47,14 @@ This skill creates a new session for every task. Session initialization happens 
 ## Pipeline Progress
 
 - [ ] clarify
+- [ ] milestone-planning (complex workflow only)
 - [ ] planning
 - [ ] execute
 - [ ] review-execute
+
+## Milestones
+
+(Populated by `milestone-planning` when Workflow is `complex`)
 
 ## Verification Strategy
 
@@ -232,7 +237,7 @@ Assess task complexity using these 5 signals. Score each signal, then determine 
 | **Risk surface** | No integration risk | Internal integration between components | External systems, schema changes, backward compatibility |
 
 **Score:** [sum of signals, range 5-15]
-**Verdict:** [Simple (5-8) | Complex (9-15)]
+**Verdict:** [Simple (5-7) | Borderline (8-9) | Complex (10-15)]
 **Rationale:** [1-2 sentences explaining the dominant complexity factor]
 
 ### Suggested Next Step
@@ -296,38 +301,37 @@ After the Context Brief is approved, the **Complexity Assessment verdict** deter
 
 | Verdict | Route | Rationale |
 |---------|-------|-----------|
-| **Simple** (score 5-8) | `planning` | Task fits in a single plan cycle. Direct planning is sufficient. |
-| **Complex** (score 9-15) | `milestone-planning` | Task requires multiple plan cycles. Milestone decomposition needed before planning. |
+| **Simple** (score 5-7) | `planning` | Task fits in a single plan cycle. Direct planning is sufficient. |
+| **Borderline** (score 8-9) | Present both options | User choice needed. Recommend `milestone-planning` if dominant factor suggests complexity, `planning` if scope is bounded. |
+| **Complex** (score 10-15) | `milestone-planning` | Task requires multiple plan cycles. Milestone decomposition needed before planning. |
 
 **Override:** The user can always override the routing. If the user says "just plan it" for a complex task, route to `planning`. If the user says "break it into milestones" for a simple task, route to `milestone-planning`.
-
-**Edge case (score 8-9):** Present both options to the user with a recommendation. Example: "This scores 9 — borderline complex. I recommend milestone-planning because [dominant factor], but planning could work if [condition]. Which do you prefer?"
 
 The "Suggested Next Step" field in the Context Brief must reflect this routing:
 
 - Simple: "Proceed to `planning`. Session: `docs/sessions/<session-id>/`"
+- Borderline: "Score [8-9] — borderline. Recommend `milestone-planning` because [dominant factor], but `planning` is viable if [condition]. User choice needed. Session: `docs/sessions/<session-id>/`"
 - Complex: "Proceed to `milestone-planning`. Session: `docs/sessions/<session-id>/`"
-- Borderline: "Recommend `milestone-planning` (score 9), but `planning` is viable if [condition]. User choice needed. Session: `docs/sessions/<session-id>/`"
 
 ## Transition
 
 Once the Context Brief is approved by the user, route based on the Complexity Assessment:
 
-- **Simple** (score 5-8) → `planning` skill — single-cycle implementation planning. Session: `docs/sessions/<session-id>/`
-- **Complex** (score 9-15) → `milestone-planning` skill — multi-phase milestone decomposition, then `long-execute` for execution. Session: `docs/sessions/<session-id>/`
+- **Simple** (score 5-7) → `planning` skill — single-cycle implementation planning. Session: `docs/sessions/<session-id>/`
 - **Borderline** (score 8-9) → present both options with recommendation, user decides. Session: `docs/sessions/<session-id>/`
+- **Complex** (score 10-15) → `milestone-planning` skill — multi-phase milestone decomposition, then `long-execute` for execution. Session: `docs/sessions/<session-id>/`
 - If further exploration is needed → continue clarify Q&A loop
 - If the scope is already trivial and planning is unnecessary → direct implementation
 
 This skill itself **does not invoke the next skill.** It ends by presenting the Context Brief, saving it to a file, and suggesting the routed next step.
 
-**Context Brief → planning 매핑:**
+**Context Brief → planning mapping:**
 
-| Context Brief 필드 | planning 입력 |
+| Context Brief Field | planning Input |
 |---|---|
-| Goal | 계획 헤더의 "목표" |
-| Scope (In/Out) | 계획 헤더의 "작업 범위" |
-| Technical Context | "아키텍처" + "기술 스택" + 파일 구조 매핑의 기반 |
-| Constraints | 태스크 분해 시 제약사항 반영 |
-| Success Criteria | Self-Review 기준 |
-| Open Questions | 계획에 가정(assumption)으로 반영 후 사용자 확인 |
+| Goal | Plan header **Goal** |
+| Scope (In/Out) | Plan header **Work Scope** (included/excluded) |
+| Technical Context | Basis for **Architecture** + **Tech Stack** + file structure mapping |
+| Constraints | Reflected as constraints during task decomposition |
+| Success Criteria | Used as Self-Review criteria |
+| Open Questions | Reflected as assumptions in the plan, then confirmed with the user |

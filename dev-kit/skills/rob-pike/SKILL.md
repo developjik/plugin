@@ -5,6 +5,35 @@ description: Rob Pike's 5 Rules of Programming — a decision framework that pre
 
 # Rob Pike's 5 Rules of Programming
 
+A decision framework that prevents premature optimization and enforces measurement-driven development. Activates before and during performance-related code changes to block the most common mistake developers and LLMs make: optimizing without evidence.
+
+This is not about implementation discipline (that's `karpathy`) or debugging (that's `systematic-debugging`). This is about the decision to optimize — ensuring that every performance change is driven by measurement, not intuition.
+
+## Hard Gates
+
+These rules have no exceptions.
+
+1. **Do not optimize without measurement data.** If you haven't profiled, you don't know where the time is spent. Any change without measurement data is a guess.
+2. **Do not optimize unless one part dominates.** If no single area overwhelms the rest, there is nothing worth optimizing. Spreading small improvements across many areas rarely matters.
+3. **Check n before choosing algorithm complexity.** If n is small (and it usually is), the simple approach wins. Always measure before reaching for a fancier algorithm.
+4. **Do not add complexity without re-measuring.** After any optimization change, measure again to confirm improvement. If it didn't help, revert it.
+5. **Do not optimize during implementation.** Write correct, simple code first. Optimization is a separate task that requires its own measurement cycle.
+
+## When To Use
+
+- When the user says "optimize", "slow", "performance", "bottleneck", "speed up", "make faster", or "too slow"
+- When you notice yourself about to suggest a performance optimization without measurement data
+- When considering algorithm or data structure changes for performance reasons
+- When evaluating whether a reported performance issue warrants code changes
+
+## When NOT To Use
+
+- During initial implementation — write correct, simple code first
+- When the user has not reported a performance problem
+- When the code is correct and readable — don't optimize "just in case"
+- For correctness issues (use `systematic-debugging` instead)
+- For code quality issues (use `simplify-code` instead, or `clean-ai-slop` if the code was AI-generated)
+
 ## The Rules
 
 1. **You can't tell where a program is going to spend its time.** Bottlenecks occur in surprising places. Don't guess — prove it.
@@ -44,9 +73,7 @@ Stop and ask these questions in order:
 4. **"Is this a data structure problem?"** — Before changing the algorithm, consider whether a different data structure makes the problem trivial. The right structure often eliminates the need for a clever algorithm entirely.
 5. **"Is the added complexity worth it?"** — Simple code that is 10% slower is almost always preferable to clever code that is fragile and hard to maintain.
 
-### Anti-Patterns to Block
-
-When you catch yourself or the user doing any of these, STOP and redirect:
+## Anti-Patterns
 
 | Impulse | Rule violated | Response |
 |---|---|---|
@@ -57,11 +84,45 @@ When you catch yourself or the user doing any of these, STOP and redirect:
 | "The algorithm is O(n²), needs fixing" | Rule 3 | What's n? O(n²) with n=100 is 10μs. Measure first. |
 | "Let me parallelize this" | Rule 2 | Is this actually CPU-bound? Measure. Often it's I/O. |
 
-### When Optimization IS Justified
+## Red Flags
 
-Proceed with optimization only when ALL of these are true:
+Stop and reconsider if you catch yourself thinking:
 
-- You have measurement data showing a specific bottleneck
-- That bottleneck dominates overall runtime (not just 5-10% of it)
-- The proposed fix is the simplest change that addresses the measured problem
-- You will re-measure after the change to confirm improvement
+- "This is obviously the bottleneck" — Rule 1 says you can't tell. Profile it.
+- "The algorithm is O(n²), that's unacceptable" — What's n? Is n small? Have you measured?
+- "Let me optimize this while I'm here" — Optimization is a separate task with its own measurement cycle
+- "I don't need to profile, I know where the time goes" — You don't. Nobody does. That's Rule 1.
+- "A few caches won't hurt" — Every cache adds complexity, invalidation logic, and potential bugs. Measure first.
+- "This is too slow, let me rewrite it" — Rewrite for simplicity, not speed. Then measure.
+
+## Minimal Checklist
+
+Before and after any optimization change, verify:
+
+- [ ] Measurement data exists identifying a specific bottleneck
+- [ ] That bottleneck dominates overall runtime (not just a small fraction)
+- [ ] I know what n is for the affected code path
+- [ ] I considered whether a different data structure solves the problem more simply
+- [ ] The proposed change is the simplest fix that addresses the measured problem
+- [ ] I will re-measure after the change to confirm improvement
+
+## Completion Standard
+
+Optimization is disciplined when:
+
+- Measurement data was collected before any code change
+- The change targets a bottleneck that dominates runtime
+- The simplest viable fix was chosen
+- Post-change measurement confirms improvement
+- No unnecessary complexity was introduced
+
+If any of these are not met, the optimization needs revision.
+
+## Transition
+
+After optimization is complete:
+
+- If the optimized code is harder to read → use `simplify-code` for general readability improvements, or `clean-ai-slop` if the code was AI-generated
+- If the optimization introduced a bug → use `systematic-debugging` to investigate
+- If the optimization didn't help → revert the change and report findings to the user
+- If the code needs broader quality review → use `simplify-code`

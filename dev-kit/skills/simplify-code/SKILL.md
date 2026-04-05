@@ -1,6 +1,6 @@
 ---
 name: simplify-code
-description: Review changed code for reuse opportunities, quality issues, and inefficiencies using three parallel review agents, then fix any issues found. Triggers when the user says "simplify", "clean up the code", "review the changes", or after execute execution when code quality verification is needed.
+description: Review changed code for reuse opportunities, quality issues, and inefficiencies using three parallel review agents, then fix any issues found. Triggers when the user says "simplify", "review the changes", or after execute execution when code quality verification is needed. For AI-generated code cleanup, use clean-ai-slop instead.
 ---
 
 # Simplify
@@ -23,9 +23,10 @@ Changed code is the only review target. Each review dimension runs independently
 ## When To Use
 
 - After any implementation work when code quality verification is needed
-- When the user says "simplify", "clean up", "review the changes", or "check the code"
+- When the user says "simplify", "review the changes", or "check the code"
 - After execute execution, before review-execute, as an intermediate quality pass
 - When the user suspects duplicated logic, inefficiencies, or hacky patterns in recent changes
+- **Disambiguation:** If the user says "clean up" without further context, and the code was AI-generated, prefer `clean-ai-slop`. If the code is not specifically AI-generated, or the user says "simplify" or "review the changes", use this skill.
 
 ## When NOT To Use
 
@@ -105,12 +106,25 @@ Provide this prompt to the agent:
 
 Provide this prompt to the agent:
 
-> You are reviewing a code diff for efficiency issues. Your job is to find unnecessary work, missed concurrency, and resource management problems. Do not optimize prematurely — flag only what is clearly unnecessary or clearly mismanaged.
+> You are reviewing a code diff for efficiency issues. Your job is to find **unambiguously wasteful** patterns — not to optimize performance. You flag only what is clearly unnecessary or clearly mismanaged regardless of measurement.
+>
+> **Scope boundary:** Fix only patterns that are obviously wasteful by inspection:
+> - The same API call made identically in a tight loop (obviously N redundant round-trips)
+> - The same file read multiple times with no intervening writes (obviously redundant I/O)
+> - Missing a batch operation where the code does N individual operations that the API/library supports as a single call
+> - Sequential `await` calls on independent operations where `Promise.all` or equivalent is the standard idiom
+>
+> **Do NOT flag** patterns that require measurement to confirm they are slow:
+> - "This could be faster with a different algorithm" — that is performance optimization, use `rob-pike`
+> - "This data structure could be more efficient" — that requires measurement, use `rob-pike`
+> - "This computation could be cached" — unless the computation is trivially shown to be repeated identically, caching requires measurement
+>
+> If a finding requires a benchmark to prove it matters, do not flag it. Instead, note it as a suggestion for the user to investigate with `rob-pike`.
 >
 > Check for these patterns:
 >
-> 1. **Unnecessary work:** the same value computed multiple times in a loop, the same file read more than once, the same API call made repeatedly when the result could be cached or batched, database queries inside loops that could be a single query with WHERE IN.
-> 2. **Missed concurrency:** multiple `await` calls in sequence where the operations are independent, sequential file reads that could be parallelized, independent API calls executed one after another.
+> 1. **Unnecessary work:** the same value computed multiple times in a loop, the same file read more than once, the same API call made repeatedly when the result is known not to change, database queries inside loops that could be a single query with WHERE IN. (Only flag what is clearly redundant by code inspection — not what might be faster with caching.)
+> 2. **Missed concurrency:** multiple independent `await` calls in sequence where the results are not used sequentially, sequential file reads that could be parallelized with no ordering dependency, independent API calls executed one after another. (Only flag where independence is obvious from the code structure.)
 > 3. **Hot-path bloat:** synchronous file I/O added to a request handler, new computation in a render function that could be memoized, new initialization logic added to module load time.
 > 4. **Recurring no-op updates:** state setters called on every interval tick without checking if the value changed, store dispatches firing on every event without a change-detection guard, wrapper functions that take updater callbacks but do not honor "no change" returns — add a change-detection guard so downstream consumers are not notified when nothing changed.
 > 5. **Unnecessary existence checks (TOCTOU):** `if (existsSync(path)) { readFileSync(path) }` — operate directly and handle the error instead.

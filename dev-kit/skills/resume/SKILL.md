@@ -41,12 +41,15 @@ This skill is a **router, not a worker.** It finds the right session and the rig
 
 2. List all subdirectories in docs/sessions/
 
-3. For each subdirectory:
+3. Filter out non-session entries (files like `.DS_Store`, hidden files, anything that is not a directory)
+   - Only consider entries that are directories
+
+4. For each subdirectory:
    a. Check if state.md exists
    b. Read state.md
    c. If Status == "in-progress", add to candidate list
 
-4. Candidate list is empty →
+5. Candidate list is empty →
    "진행 중인 세션이 없습니다. 새 작업을 시작하려면 clarify를 시작합니다."
    Route to clarify.
 ```
@@ -97,6 +100,9 @@ Read the selected session's `state.md` Next Action field.
 | "milestone-planning" | `milestone-planning` skill with session path |
 | "long-execute" | `long-execute` skill with session path |
 | "simplify" | `simplify-code` skill |
+| "clean" or "deslop" | `clean-ai-slop` skill |
+| "karpathy" | `karpathy` skill |
+| "rob-pike" | `rob-pike` skill |
 | "debugging" | `systematic-debugging` skill |
 
 **Dispatch message format:**
