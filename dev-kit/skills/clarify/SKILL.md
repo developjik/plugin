@@ -1,337 +1,216 @@
 ---
 name: clarify
-description: Use when a user's request is vague, ambiguous, or underspecified. Launches an iterative Q&A loop to resolve ambiguity while a subagent explores the codebase in parallel. Outputs a clear, well-scoped context brief so the user can plan sharply. Triggers on "I want to...", "I need...", "let's build...", "can you help me...", "we should...", or any request where the full scope isn't immediately clear.
+description: Use when a user's request is vague, ambiguous, or underspecified. Produces a Context Brief, scores complexity, and initializes `.dev-kit/` session state for the unified clarify -> planning -> execute -> review workflow.
 ---
 
 # Clarification Through Iterative Discovery
 
-Narrows vague user requests into well-defined work scopes. Runs questions and code exploration in parallel to bring the user to a state where they can plan sharply.
+Narrows vague requests into a decision-ready work scope. Clarify does not choose between different workflows. It always prepares the canonical handoff to `planning`.
 
 ## Core Principle
 
-Ambiguity does not resolve in one pass. Multiple rounds of questions and code exploration intersect, gradually sharpening the picture. The purpose of this skill is not "writing code" — it is making "what the user wants" and "what state the codebase is in" vivid and clear.
+Clarify exists to remove ambiguity, not to start implementation. Its output is a Context Brief plus execution-profile guidance that planning can act on without reopening basic product questions.
 
 ## Hard Gates
 
-1. **One question per message.** Never bundle multiple questions into a single message.
-2. **Always use subagents.** While conversing with the user, dispatch subagents to explore the codebase in response to the user's answers.
-3. **Do not start implementation until you can say "this is clear enough."** Understanding must be complete at the codebase level.
-4. **Every question must narrow scope.** Do not repeat questions at the same level of ambiguity.
-5. **Never dump raw code exploration results on the user.** Summarize findings in the context of the user's question.
+1. **One question per message.** Never bundle multiple user questions into one turn.
+2. **Always explore in parallel.** While asking the user about intent, inspect the codebase to ground scope in repo reality.
+3. **Do not implement.** Clarify ends at a saved brief and updated session state.
+4. **Every question must narrow scope.** Ask only questions that change the brief or lock an assumption.
+5. **Complexity does not route.** Clarify may score complexity, but the next skill is always `planning`.
 
 ## Session Initialization
 
-This skill creates a new session for every task. Session initialization happens before the Q&A loop begins.
+Clarify creates a new session directory for each task under the workspace root:
+
+```text
+.dev-kit/sessions/<session-id>/
+```
 
 **Session ID format:** `YYYY-MM-DDTHH-MM-<slug>`
 
-- Use current date/time when clarify starts
-- Derive `<slug>` from the user's request topic: lowercase, hyphenated, max 3 words, most distinctive keyword
-- Examples: `2026-04-05T14-32-auth-login`, `2026-04-07T09-00-payment-migration`
+- Use current date and time when clarify starts
+- Derive `<slug>` from the user's request topic: lowercase, hyphenated, max 3 words
 
-**Process:**
+Write `.dev-kit/current.json`:
 
-1. Generate the session ID from current timestamp and request topic
-2. Create the session directory: `docs/sessions/<session-id>/`
-3. Create `state.md` with initial content:
-
-```markdown
-# Session: [Topic Title]
-
-**Session ID:** <session-id>
-**Created:** YYYY-MM-DD HH:MM
-**Last Updated:** YYYY-MM-DD HH:MM
-**Workflow:** (to be determined by Complexity Assessment)
-**Status:** in-progress
-
-## Pipeline Progress
-
-- [ ] clarify
-- [ ] milestone-planning (complex workflow only)
-- [ ] planning
-- [ ] execute
-- [ ] review-execute
-
-## Milestones
-
-(Populated by `milestone-planning` when Workflow is `complex`)
-
-## Verification Strategy
-
-(to be discovered during planning phase)
-
-## Files
-
-| File | Phase | Status |
-|------|-------|--------|
-| brief.md | clarify | — |
-
-## Next Action
-
-Clarification in progress. Complete Q&A loop to produce brief.md.
-
-## Execution Log
-
-| Timestamp | Event | Details |
-|-----------|-------|---------|
-| YYYY-MM-DD HH:MM | session-created | Session initialized from clarify |
-```
-
-4. The `Workflow` field is set after the Complexity Assessment is complete (simple or complex).
-
-## When To Use
-
-- The user says "I want to…" but the scope is unclear
-- The request is vague enough that implementation could go in multiple directions
-- The user themselves hasn't fully articulated what they want
-- There's a risk of clashing with existing codebase structure, so exploration is needed
-
-## When NOT To Use
-
-- The request is already specific and clear (proceed to implementation or plan skill)
-- The scope is obvious, like a simple bug fix or config change
-- The user explicitly says "don't ask questions, just do it"
-
-## The Two-Track Process
-
-### Track 1: User Q&A (Ambiguity Resolution)
-
-Ask the user questions to resolve ambiguity.
-
-**Question principles:**
-
-- One question per message
-- Offer choices when possible (A/B/C)
-- When a new ambiguity emerges from an answer, drill into it in the next question
-- Ask "which case?" rather than "why?" — draw out concrete scenarios, not abstract intent
-- If an answer contradicts a previous one, flag it immediately and realign
-
-**Question sequence guide:**
-
-1. **Purpose**: "What is the end goal of this work?" (what they want to achieve)
-2. **Scope**: "What's included and what's excluded?" (draw boundaries)
-3. **Constraints**: "Are there existing constraints that affect this?" (time, compatibility, dependencies)
-4. **Success criteria**: "What should the state look like when this is done?" (verifiable outcome)
-5. **Priority**: "If there are multiple paths, what matters most?" (trade-offs)
-
-After each question, briefly update "what we've established so far."
-
-### Track 2: Codebase Exploration (Technical Context)
-
-Use subagents to explore the codebase. Run in parallel with user Q&A.
-
-**How to dispatch exploration:**
-
-Immediately after asking the user a question, launch a subagent via the Agent tool. The goal is to make the user fully understand how the work plays out in the codebase. The subagent investigates:
-
-- Related file structure and naming conventions
-- Existing implementation patterns (error handling, state management, data flow)
-- Dependencies and interface boundaries
-- Recent change history (relevant commits)
-- Test coverage status
-
-**Subagent prompt template:**
-
-```
-subagent_type: Explore
-description: "Explore [topic] codebase"
-prompt: |
-  The user has requested [summarized request].
-
-  Investigate and report on:
-  1. Related files and the role of each
-  2. Existing implementation patterns (is something similar already in place?)
-  3. Boundary areas this work is likely to affect
-  4. Recent related changes
-  5. Existing test state
-
-  Report only key findings concisely.
-  Do not dump entire file contents.
-```
-
-**Processing subagent results:**
-
-When the subagent returns findings:
-1. Cross-validate against the user's answers
-2. If technical constraints unknown to the user are discovered, reflect them in the next question
-3. If a conflict with existing code is likely, notify the user
-
-## Putting It Together: The Loop
-
-```dot
-digraph clarify {
-    rankdir=TB;
-    "User states vague request" [shape=box];
-    "Assess: what's ambiguous?" [shape=box];
-    "Ask user ONE question" [shape=box];
-    "Dispatch explore subagent" [shape=box, style=dashed];
-    "Receive user answer" [shape=box];
-    "Receive subagent findings" [shape=box, style=dashed];
-    "Synthesize: still ambiguous?" [shape=diamond];
-    "Present context brief" [shape=doublecircle];
-
-    "User states vague request" -> "Assess: what's ambiguous?";
-    "Assess: what's ambiguous?" -> "Ask user ONE question";
-    "Ask user ONE question" -> "Dispatch explore subagent" [style=dashed, label="parallel"];
-    "Ask user ONE question" -> "Receive user answer";
-    "Dispatch explore subagent" -> "Receive subagent findings" [style=dashed];
-    "Receive user answer" -> "Synthesize: still ambiguous?";
-    "Receive subagent findings" -> "Synthesize: still ambiguous?" [style=dashed];
-    "Synthesize: still ambiguous?" -> "Ask user ONE question" [label="yes"];
-    "Synthesize: still ambiguous?" -> "Present context brief" [label="no"];
+```json
+{
+  "schema_version": 1,
+  "session_id": "<session-id>",
+  "session_path": ".dev-kit/sessions/<session-id>",
+  "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ"
 }
 ```
 
-**Each cycle:**
+Write `.dev-kit/sessions/<session-id>/state.json`:
 
-1. Receive the user's answer
-2. Merge subagent results if available (if still in progress, merge in the next cycle)
-3. Update the "remaining ambiguities" list
-4. Pick the next question (prioritize the one that most affects scope)
-5. If needed, launch additional subagents (when previous exploration revealed new areas to investigate)
+```json
+{
+  "schema_version": 1,
+  "session_id": "<session-id>",
+  "title": "[Topic Title]",
+  "feature_slug": "<slug>",
+  "status": "in_progress",
+  "current_phase": "clarify",
+  "execution_profile": null,
+  "plan_status": "not_started",
+  "plan_version": 0,
+  "next_action": "Complete clarify and write brief.md.",
+  "artifacts": {
+    "brief": null,
+    "plan": null,
+    "plan_review": null,
+    "review": null
+  },
+  "phase_status": {},
+  "created_at": "YYYY-MM-DDTHH:MM:SS+TZ",
+  "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ"
+}
+```
 
-## Output: Context Brief
+All paths stored in JSON must be relative to the workspace root.
 
-When ambiguity is sufficiently resolved, present the user with a Context Brief. This is the skill's final deliverable.
+## When To Use
 
-**Context Brief format:**
+- The request is vague enough that implementation could go in multiple directions
+- The user wants a new feature but scope, success criteria, or constraints are not yet concrete
+- Existing codebase structure may materially affect the design
+
+## When NOT To Use
+
+- The work scope is already concrete and bounded
+- The user explicitly says to skip clarification
+
+## Two-Track Process
+
+### Track 1: User Q&A
+
+Ask questions that narrow:
+
+1. Purpose
+2. Scope boundaries
+3. Constraints
+4. Success criteria
+5. Priority and tradeoffs
+
+After each answer, summarize what changed in the brief.
+
+### Track 2: Codebase Exploration
+
+Inspect the repo in parallel to discover:
+
+- Relevant entry points and modules
+- Existing interfaces that constrain the design
+- Likely file impact
+- Verification options already present in the project
+- Existing patterns the plan should preserve
+
+Summarize only the parts that matter to the user's decision.
+
+## Context Brief Template
+
+Save the final brief to:
+
+```text
+.dev-kit/sessions/<session-id>/brief.md
+```
+
+Use this structure:
 
 ```markdown
-## Context Brief: [Task Title]
+# Context Brief: [Task Title]
 
-### Goal
-[One-sentence task goal]
+## Goal
+[One paragraph describing what the user wants]
 
-### Scope
-- **In scope**: [Included work]
-- **Out of scope**: [Explicitly excluded work]
+## Scope
+- **In scope:** [Included work]
+- **Out of scope:** [Explicitly excluded work]
 
-### Technical Context
-[Technical facts discovered through code exploration]
-- Current implementation state
-- Affected areas
-- Existing patterns to follow
+## Technical Context
+[Relevant codebase findings, system boundaries, likely files, constraints]
 
-### Constraints
-[Identified constraints]
-- External constraints
-- Technical constraints
-- Time/priority constraints
+## Constraints
+- [Compatibility, deadlines, risk, dependency, rollout, product constraints]
 
-### Success Criteria
-[Specific criteria for the completed state]
+## Success Criteria
+- [Concrete, verifiable outcomes]
 
-### Open Questions (if any)
-[Questions still open — unresolved but not blocking]
+## Open Questions
+- [Only unresolved but non-blocking items]
 
-### Complexity Assessment
-
-Assess task complexity using these 5 signals. Score each signal, then determine the routing.
+## Complexity Assessment
 
 | Signal | Low (1) | Medium (2) | High (3) |
 |--------|---------|-----------|----------|
-| **Scope breadth** | Single feature or component | 2-3 related components | 4+ components or cross-cutting concerns |
-| **File impact** | ≤3 files | 4-8 files | 9+ files or across 3+ directories |
-| **Interface boundaries** | Works within existing interfaces | Extends existing interfaces | Defines new interfaces or modifies contracts |
-| **Dependency depth** | No ordering constraints | Linear dependency chain | Branching dependencies requiring DAG |
-| **Risk surface** | No integration risk | Internal integration between components | External systems, schema changes, backward compatibility |
+| Scope breadth | Single feature or component | 2-3 related components | 4+ components or cross-cutting concerns |
+| File impact | <=3 files | 4-8 files | 9+ files or 3+ directories |
+| Interface boundaries | Works within existing interfaces | Extends existing interfaces | Defines or reshapes contracts |
+| Dependency depth | No ordering constraints | Mostly linear ordering | Branching dependencies or phase boundaries |
+| Risk surface | Low integration risk | Internal integration risk | External systems, schema, compatibility, or migration risk |
 
-**Score:** [sum of signals, range 5-15]
-**Verdict:** [Simple (5-7) | Borderline (8-9) | Complex (10-15)]
-**Rationale:** [1-2 sentences explaining the dominant complexity factor]
+**Complexity Score:** [5-15]
+**Execution Profile:** [low | medium | high]
+**Recommended Split:** [none | task | phased]
+**Recommended Isolation:** [inline | parallel-subagents | worktree-eligible]
+**Risk Notes:** [1-3 sentences]
 
-### Suggested Next Step
-[Auto-determined by Complexity Assessment verdict — see Routing Rules below]
+## Suggested Next Step
+Run `planning`. Read `.dev-kit/sessions/<session-id>/brief.md`.
 ```
 
-**Save the Context Brief to a file:**
+## Complexity Assessment Rules
 
-```
-docs/sessions/<session-id>/brief.md
-```
+Score the 5 signals, then map them to the execution profile:
 
-(User preferences for brief location override this default.)
+- **Low**: score 5-7
+  - recommended split: `none`
+  - recommended isolation: `inline`
+- **Medium**: score 8-10
+  - recommended split: `task`
+  - recommended isolation: `parallel-subagents`
+- **High**: score 11-15
+  - recommended split: `phased`
+  - recommended isolation: `worktree-eligible`
+  - note explicitly that worktree use still depends on planning confirming disjoint write sets
 
-Present the Context Brief to the user first. Once the user approves, save it to the file. This file is used directly as input to the `planning` or `milestone-planning` skill.
+## State Update
 
-**After saving brief.md, update state.md:**
+Present the Context Brief to the user first. Once approved, save `brief.md` and update `state.json`:
 
-- Set `brief.md` row in Files table to `Status: created`
-- Set `Pipeline Progress > clarify` checkbox to `[x]`
-- Set `Workflow` field based on Complexity Assessment verdict (`simple` or `complex`)
-- Add execution log entry: `YYYY-MM-DD HH:MM | clarify-completed | brief.md saved`
-- Update `Next Action` based on verdict:
-  - Simple: `"Run planning. Read brief.md from docs/sessions/<session-id>/"`
-  - Complex: `"Run milestone-planning. Read brief.md from docs/sessions/<session-id>/"`
-- Update `Last Updated` timestamp
+- set `execution_profile` from the Complexity Assessment
+- keep `plan_status` as `not_started`
+- keep `plan_version` as `0`
+- set `current_phase` to `planning`
+- keep `status` as `in_progress`
+- set `next_action` to `Run planning. Read .dev-kit/sessions/<session-id>/brief.md.`
+- set `artifacts.brief` to `.dev-kit/sessions/<session-id>/brief.md`
+- update `updated_at`
 
-## Red Flags
-
-Stop and recalibrate if any of these occur:
-
-| Situation | Response |
-|-----------|----------|
-| User says "just figure it out" | Warn: starting before ambiguity is resolved leads to a high probability of rework. At minimum, confirm purpose and success criteria |
-| Same topic questioned 3+ times | The user genuinely doesn't know. Separate knowns from unknowns, present assumptions for the unknowns, and confirm |
-| Subagent finds conflicting existing code | Notify the user immediately. Conflicts with existing structure require a design decision |
-| Request decomposes into multiple independent sub-tasks | Show the decomposition to the user and propose prioritizing one at a time |
+Also refresh `.dev-kit/current.json` so it still points to the same session with a new `updated_at` timestamp.
 
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails |
-|--------------|-------------|
-| Five questions in one message | The user gives shallow answers. Ambiguity persists. |
-| Questions without code exploration | Scope can narrow in a direction that conflicts with existing code |
-| Showing full subagent output to the user | Too much noise. Provide only the summary relevant to the user's context |
-| Deciding "that's enough" unilaterally | Always present the Context Brief to the user and get confirmation |
-| Starting implementation | This skill ends at "clear context," not "implemented code" |
+|---|---|
+| Routing to different skills based on complexity | The visible workflow must stay fixed |
+| Asking broad questions without exploration | Misses repo constraints and causes rework |
+| Dumping raw exploration output | Too noisy; the user needs interpreted findings |
+| Starting implementation from clarify | Breaks the stage boundary and weakens planning |
 
 ## Minimal Checklist
 
-Self-check at the end of each cycle:
-
-- [ ] Did one ambiguity get resolved this cycle?
-- [ ] Is subagent exploration in progress or complete?
-- [ ] Is the next question based on previous answers?
-- [ ] Has progress been clearly communicated to the user?
-
-## Routing Rules
-
-After the Context Brief is approved, the **Complexity Assessment verdict** determines the next skill:
-
-| Verdict | Route | Rationale |
-|---------|-------|-----------|
-| **Simple** (score 5-7) | `planning` | Task fits in a single plan cycle. Direct planning is sufficient. |
-| **Borderline** (score 8-9) | Present both options | User choice needed. Recommend `milestone-planning` if dominant factor suggests complexity, `planning` if scope is bounded. |
-| **Complex** (score 10-15) | `milestone-planning` | Task requires multiple plan cycles. Milestone decomposition needed before planning. |
-
-**Override:** The user can always override the routing. If the user says "just plan it" for a complex task, route to `planning`. If the user says "break it into milestones" for a simple task, route to `milestone-planning`.
-
-The "Suggested Next Step" field in the Context Brief must reflect this routing:
-
-- Simple: "Proceed to `planning`. Session: `docs/sessions/<session-id>/`"
-- Borderline: "Score [8-9] — borderline. Recommend `milestone-planning` because [dominant factor], but `planning` is viable if [condition]. User choice needed. Session: `docs/sessions/<session-id>/`"
-- Complex: "Proceed to `milestone-planning`. Session: `docs/sessions/<session-id>/`"
+- [ ] Is the user goal concrete?
+- [ ] Are scope boundaries explicit?
+- [ ] Are technical constraints grounded in repo findings?
+- [ ] Is the complexity assessment complete?
+- [ ] Does the brief hand off cleanly to planning?
 
 ## Transition
 
-Once the Context Brief is approved by the user, route based on the Complexity Assessment:
+Once the Context Brief is approved and saved:
 
-- **Simple** (score 5-7) → `planning` skill — single-cycle implementation planning. Session: `docs/sessions/<session-id>/`
-- **Borderline** (score 8-9) → present both options with recommendation, user decides. Session: `docs/sessions/<session-id>/`
-- **Complex** (score 10-15) → `milestone-planning` skill — multi-phase milestone decomposition, then `long-execute` for execution. Session: `docs/sessions/<session-id>/`
-- If further exploration is needed → continue clarify Q&A loop
-- If the scope is already trivial and planning is unnecessary → direct implementation
+- proceed to `planning`
 
-This skill itself **does not invoke the next skill.** It ends by presenting the Context Brief, saving it to a file, and suggesting the routed next step.
-
-**Context Brief → planning mapping:**
-
-| Context Brief Field | planning Input |
-|---|---|
-| Goal | Plan header **Goal** |
-| Scope (In/Out) | Plan header **Work Scope** (included/excluded) |
-| Technical Context | Basis for **Architecture** + **Tech Stack** + file structure mapping |
-| Constraints | Reflected as constraints during task decomposition |
-| Success Criteria | Used as Self-Review criteria |
-| Open Questions | Reflected as assumptions in the plan, then confirmed with the user |
+This skill does not invoke the next skill itself. It saves the brief, updates `.dev-kit/` state, and points the session to `planning`.

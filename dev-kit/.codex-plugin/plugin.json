@@ -1,7 +1,7 @@
 {
   "name": "dev-kit",
-  "version": "0.0.1",
-  "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
+  "version": "0.1.0",
+  "description": "Development workflow plugin with a unified clarify-plan-execute-review flow, JSON-backed session state, hooks, debugging, and code quality skills",
   "author": {
     "name": "developjik",
     "email": "developjik@users.noreply.github.com",
@@ -24,8 +24,8 @@
   "apps": "./.app.json",
   "interface": {
     "displayName": "Dev Kit",
-    "shortDescription": "Structured development workflow: clarify, plan, execute, review, debug",
-    "longDescription": "A comprehensive development workflow plugin providing 12 skills covering the full development lifecycle — from requirement clarification and milestone planning through execution, independent review, debugging, and code quality improvement. Includes discipline frameworks (Karpathy rules, Rob Pike rules) and AI-slop cleanup.",
+    "shortDescription": "Unified development workflow: clarify, plan, execute, review, debug",
+    "longDescription": "A development workflow plugin centered on a single visible flow: clarify, planning, execute, and review. Session state is stored under .dev-kit/ as JSON, human-readable artifacts stay beside that state, and hooks surface the active session summary at startup and prompt submit. Includes debugging and code-quality disciplines.",
     "developerName": "developjik",
     "category": "Developer Tools",
     "capabilities": [
@@ -36,7 +36,7 @@
     "privacyPolicyURL": "https://github.com/developjik/plugin/blob/main/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/developjik/plugin/blob/main/TERMS.md",
     "defaultPrompt": [
-      "Clarify this task and create a plan for implementation.",
+      "Clarify this task, create a plan, execute it, and review the result.",
       "Debug this failing test with systematic root-cause analysis.",
       "Review and simplify the changed code for quality issues."
     ],

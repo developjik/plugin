@@ -20,6 +20,7 @@ These rules have no exceptions.
 3. **Run tests after every pass.** If tests fail, revert the pass and investigate. Do not proceed to the next category.
 4. **Stay in scope.** Only touch files that were generated or modified by AI. Do not expand into "nearby" code that looks like it could use improvement.
 5. **Preserve behavior exactly.** If a cleanup changes observable behavior — even if you think the new behavior is "better" — revert it. Behavior changes require a separate task.
+6. **Do not clean `.dev-kit/**`.** Dev Kit session state, human-readable artifacts, and checkpoint files are workflow metadata, not product code.
 
 ## When To Use
 
@@ -34,6 +35,7 @@ These rules have no exceptions.
 - Code that was written by humans (different smells, different treatment)
 - When tests don't exist and can't be added quickly (lock behavior first)
 - Mid-implementation — finish the feature, then clean
+- `.dev-kit/**` workflow metadata
 
 ## Smell Categories
 

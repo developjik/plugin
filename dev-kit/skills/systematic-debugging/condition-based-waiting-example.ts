@@ -3,10 +3,11 @@
 // Context: Fixed 15 flaky tests by replacing arbitrary timeouts
 
 /**
- * Wait for a specific event type to appear in thread
+ * Wait for a specific event matching a predicate to appear
  *
  * @param getEvents - Function returning current events list
- * @param eventType - Type of event to wait for
+ * @param matchFn - Predicate function that returns true for the desired event
+ * @param description - Human-readable description for timeout error messages
  * @param timeoutMs - Maximum time to wait (default 5000ms)
  * @returns Promise resolving to the first matching event
  */

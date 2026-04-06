@@ -1,7 +1,7 @@
 {
   "name": "dev-kit",
-  "version": "0.0.1",
-  "description": "Development workflow plugin with structured planning, execution, debugging, and code quality skills",
+  "version": "0.1.0",
+  "description": "Development workflow plugin with a unified clarify-plan-execute-review flow, JSON-backed session state, hooks, debugging, and code quality skills",
   "author": {
     "name": "developjik",
     "email": "developjik@users.noreply.github.com",
