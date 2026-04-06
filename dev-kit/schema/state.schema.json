@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/developjik/plugin/dev-kit/state.schema.json",
+  "title": "Dev Kit Session State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "title",
+    "feature_slug",
+    "status",
+    "current_phase",
+    "execution_profile",
+    "plan_status",
+    "plan_version",
+    "next_action",
+    "artifacts",
+    "phase_status",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "feature_slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["in_progress", "completed"]
+    },
+    "current_phase": {
+      "type": "string",
+      "enum": ["clarify", "planning", "execute", "review"]
+    },
+    "execution_profile": {
+      "type": ["string", "null"],
+      "enum": ["low", "medium", "high", null]
+    },
+    "plan_status": {
+      "type": "string",
+      "enum": ["not_started", "drafting", "in_review", "revising", "approved"]
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "next_action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brief", "plan", "plan_review", "review"],
+      "properties": {
+        "brief": {
+          "type": ["string", "null"]
+        },
+        "plan": {
+          "type": ["string", "null"]
+        },
+        "plan_review": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "phase_status": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pending", "executing", "completed"]
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

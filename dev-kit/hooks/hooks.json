@@ -1,3 +1,28 @@
 {
-  "hooks": []
+  "description": "Dev Kit resumable-session summary hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/hooks/session-start.sh\"",
+            "statusMessage": "Loading Dev Kit session summary"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/hooks/user-prompt-submit.sh\"",
+            "statusMessage": "Checking Dev Kit session state"
+          }
+        ]
+      }
+    ]
+  }
 }
