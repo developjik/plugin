@@ -1,290 +1,507 @@
 ---
 name: execute
-description: Use when you have a written implementation plan to execute. Loads the plan, reviews critically, executes tasks in dependency order, and reports completion. Triggers when the user says "run the plan", "execute the plan", or "let's start implementing".
+description: Unified execution orchestrator for Dev Kit. Reads the approved canonical `plan.md`, executes either a single-phase or phased plan, enforces task validation, and manages checkpoint JSON plus resume-safe `.dev-kit/` state updates.
 ---
 
 # Run Plan
 
-Loads a written plan document, reviews it critically, then executes tasks in dependency order using a worker-validator loop.
+Loads an approved `plan.md` and executes it using worker-validator loops. `execute` owns both the simple and high-complexity execution paths, but it is a pure execution stage rather than a second planning pass.
 
 ## Core Principle
 
-Do not follow plans blindly. If the plan has issues, flag them before executing. But if the plan is clear, execute it faithfully.
+Execute follows the approved plan faithfully. Planning already closed plan quality and execute readiness, so execute should focus on implementation, validation, and integration only. If reality still contradicts the approved plan, treat that as a planning contract violation rather than inventing a new workflow state.
 
 ## Hard Gates
 
-1. **Read and review the plan first.** Always review the entire plan before executing.
-2. **Follow steps exactly.** Do not skip or alter steps in the plan arbitrarily.
-3. **Never skip verification.** Test runs, expected output checks, and other verifications stated in the plan must be performed.
-4. **Parallelizable tasks must always run in parallel.** Tasks with no dependencies and no shared file modifications must be dispatched concurrently. Sequential grouping is prohibited.
-5. **Worker and Validator must be separate subagents.** The main agent must NOT perform worker or validator roles inline. Each must be dispatched as an independent subagent via the Agent tool.
-6. **Validator must not receive worker output.** The validator subagent receives only the plan's task goal and acceptance criteria. It must never receive the worker's diff, logs, or implementation details. The validator judges by reading the code and running tests independently.
-7. **Stop when blocked.** Do not guess. Ask the user.
+1. **Read the full approved plan first.** Never start executing from a partial excerpt.
+2. **Only the orchestrator writes session state.** Workers, validators, and worktree agents must not edit `.dev-kit/current.json` or `state.json`.
+3. **Task validation stays isolated.** Validators receive only plan-derived task requirements, never worker output.
+4. **Phase completion requires integration checks.** In phased runs, a phase is not complete until its integration gate passes and its checkpoint JSON is written.
+5. **Worktree execution is conditional.** Use worktrees only for groups explicitly marked worktree-eligible in the approved plan.
+6. **Execute does not redesign the plan.** If the approved plan proves structurally wrong, stop and report a planning contract violation.
+7. **Normal workflow state stays simple.** Execute keeps the session `in_progress` until work is ready for `review-execute`.
 
 ## When To Use
 
-- After a plan has been crafted with the `planning` skill
-- When the user says "run this plan" or "execute the plan"
-- When a plan document exists and implementation should begin
+- After `planning` freezes an approved canonical `plan.md`
+- When the user wants the plan carried out
+- When a session is ready to resume execution
 
 ## When NOT To Use
 
-- When no plan document exists yet (use `planning` first)
-- When work scope is still ambiguous (return to the `clarify` skill)
-- Single-step tasks that don't need a plan
+- No canonical `plan.md` exists
+- `plan_status` is not `approved`
+- Work scope is still ambiguous
+- The user only asked for a plan
 
-## Process
+## Input
 
-### Session Discovery
+Canonical input:
 
-This skill operates within a session at `docs/sessions/<session-id>/`.
+```text
+.dev-kit/sessions/<session-id>/plan.md
+```
 
-- If the user or resume skill provides a session path, use it.
-- If the user provides a plan file path, derive the session from it (plan is at `docs/sessions/<session-id>/plan.md`).
-- Otherwise, scan `docs/sessions/` for the most recent session where planning is completed and execute is not yet completed.
-- Read `state.md` for current state and `plan.md` path.
+Session discovery order:
 
-### Step 0: Project Capability Discovery
+1. If the user provides a session path, use it
+2. Otherwise, read `.dev-kit/current.json`
+3. If the pointer is missing, invalid, or not resumable, use the shared session-recovery helper to scan `.dev-kit/sessions/*/state.json` for sessions with `status` in `in_progress` or `paused`
+4. If no resumable session exists, stop and tell the user to run `planning` or provide an explicit session path
 
-Before reviewing the plan, discover what the project offers for verification and execution:
+Read:
 
-1. **Verification infrastructure** — read the plan's `Verification Strategy` header. If present, use it. If absent, run the same discovery as planning:
-   - e2e tests → integration tests → verification skills/agents → test suite → build+lint
-   - Record the discovered command for use in the E2E Gate (Step 3)
+- `.dev-kit/sessions/<session-id>/state.json`
+- `.dev-kit/sessions/<session-id>/plan.md`
+- any existing checkpoint JSON files
 
-2. **Available agents and skills** — scan for project-level agents (`.claude/agents/`), plugin agents, and project skills (`.claude/skills/`) that workers can leverage. If the plan references specific agents in task steps, verify they exist before execution begins.
+## Step 0: Load The Approved Plan
 
-3. **If an agent/skill is referenced but missing:** Notify the user. Do not block execution — workers can execute steps directly without the agent.
+Before execution begins:
 
-### Step 1: Load and Review Plan
+1. Read the entire `plan.md`
+2. Confirm `state.json.plan_status` is `approved`
+3. Derive the execution graph directly from the approved plan
 
-1. Read the plan file
-2. Review critically:
-   - Are task dependencies correct?
-   - Do file paths exist?
-   - Are there any placeholders in steps?
-   - Is anything unclear?
-3. If issues found: notify the user before starting
-4. If no issues: create tasks via TaskCreate and proceed
+If the approved plan contract is missing or structurally incoherent at this point, stop and report a planning contract violation rather than mutating workflow state.
 
-**Update `state.md` after Step 1 completes:**
-- Update Pipeline Progress execute checkbox to show in-progress: `[-]`
-- Add execution log entry: `execute-started | began task execution`
-- Update Last Updated timestamp
+## Step 1: Build The Execution Graph
 
-### Step 2: Task Execution Loop
+Read these sections from the approved plan:
 
-Each task runs through a **Compliance Check → Worker Implementation → Validator Review** cycle. If the validator rejects, feedback is sent back to the worker for re-implementation.
+- `Execution Strategy`
+- `Phase Graph`
+- `Parallel Groups`
+- `Write-Set Overlap Check`
+- `Worktree Decision`
+- `Checkpoint Plan`
+- `Integration Gates`
 
-```dot
-digraph task_loop {
-    rankdir=TB;
-    "Compliance check (subagent)" [shape=box];
-    "Worker implements (subagent)" [shape=box];
-    "Validator reviews (subagent)" [shape=box];
-    "Pass?" [shape=diamond];
-    "Task complete" [shape=doublecircle];
+From them, derive:
 
-    "Compliance check (subagent)" -> "Worker implements (subagent)";
-    "Worker implements (subagent)" -> "Validator reviews (subagent)";
-    "Validator reviews (subagent)" -> "Pass?";
-    "Pass?" -> "Task complete" [label="Pass"];
-    "Pass?" -> "Worker implements (subagent)" [label="Fail\nfeedback delivered"];
+- ordered phase list
+- ready-task groups for each phase
+- which groups run sequentially
+- which groups run in parallel
+- which parallel groups are worktree-eligible
+
+If the plan says `Split Mode: single-phase`, treat the full plan as phase `P1`.
+
+After the graph is loaded, update `state.json`:
+
+- set `current_phase` to `execute`
+- keep `status` as `in_progress`
+- keep `plan_status` as `approved`
+- update `updated_at`
+
+Refresh `.dev-kit/current.json` with the same session pointer and new `updated_at`.
+
+## Step 2: Task Execution Cycle
+
+Every task goes through:
+
+1. compliance check
+2. worker implementation
+3. validator review
+
+### 2-1. Compliance Check
+
+Before launching a task:
+
+- confirm dependencies are complete
+- confirm no overlapping file group is already in progress
+- confirm required predecessor artifacts exist
+
+If any of these fail because the approved plan itself no longer makes sense, stop and report a planning contract violation.
+
+### 2-2. Worker Implementation
+
+Dispatch a worker subagent to execute the task exactly as written.
+
+Worker rules:
+
+- follow the task steps
+- run the task's stated verification commands
+- stay within the task's file scope unless the plan explicitly allows broader changes
+- report only completion status, blockers, and verification results
+- treat `.dev-kit/**` as orchestrator-owned metadata
+
+### 2-3. Validator Review
+
+Dispatch a separate validator subagent with only:
+
+- task goal
+- task acceptance criteria
+- files to inspect
+- task-level verification commands
+
+Validator rules:
+
+- inspect code directly from disk
+- run task verification independently
+- report `PASS` or `FAIL`
+- on `FAIL`, describe the unmet criteria with file paths and line numbers
+- do not edit `.dev-kit/**`
+
+Retry rule:
+
+- the same task may be retried at most 3 times
+- after 3 failures, stop and escalate
+
+### 2-3a. Git Commit Guidance (SHOULD)
+
+These are recommended practices, not hard gates. The orchestrator SHOULD commit after a task passes validation and before appending the progress log entry.
+
+**Timing:**
+
+- SHOULD commit after validator PASS, before the progress log append
+- the progress log entry then records the commit SHA rather than "uncommitted"
+
+**Message format:**
+
+- `[<session-id>] Task <N>: <task-name>`
+- example: `[2026-04-06T16-30-auth-refactor] Task 2: Add JWT generation`
+
+**Scope:**
+
+- only files within the task's declared file scope from the approved plan
+- do not commit `.dev-kit/**` session metadata in task commits
+
+**On validator FAIL:**
+
+- do not commit
+- if retrying the task, the previous attempt's changes remain in the working tree for the worker to fix or reset as appropriate
+
+**Worktree execution:**
+
+- workers commit within their worktree
+- when merging worktrees back, commits arrive on the main branch in merge order
+- after merge, the orchestrator does not create additional squash or merge commits
+
+**Low-profile exception:**
+
+- for low-profile tasks, a single commit at execute completion is acceptable instead of per-task commits
+- use message format: `[<session-id>] Execute complete: <feature-slug>`
+
+### 2-4. Append Progress Log
+
+After each task completes validation (PASS or FAIL), the orchestrator appends a timestamped entry to:
+
+```text
+.dev-kit/sessions/<session-id>/progress.md
+```
+
+Progress log rules:
+
+- `progress.md` is NOT tracked in `state.json` artifacts — it is a pure file artifact with no schema impact
+- only the orchestrator writes this file (consistent with Hard Gate #2)
+- create the file with a header block on the first append if it does not already exist
+- in worktree-parallel execution, buffer task results and append them after the merge step, not from within worktrees
+
+Header block (written once at creation):
+
+```markdown
+# Execution Progress Log
+
+**Session:** <session-id>
+**Plan Version:** <integer>
+**Started:** <ISO timestamp>
+```
+
+Entry template (appended after each task validation):
+
+```markdown
+### Task <N>: <Name> — <PASS|FAIL> (<timestamp>)
+- Phase: P<N>
+- Files: <changed files>
+- Duration: <elapsed>
+- Commit: <short SHA or "uncommitted">
+- Notes: <one-line summary or failure reason>
+```
+
+When the git commit guidance (Step 2-3a) is followed, the Commit field records the actual short SHA. When commits are deferred (e.g., low-profile single commit), record "uncommitted" until the deferred commit is made; do not retroactively update earlier entries.
+
+#### Low-Profile Progress Entries
+
+When `execution_profile` is `low`, progress entries MAY use a one-line format:
+
+```markdown
+- Task <N>: <Name> — <PASS|FAIL> (<timestamp>) — <short SHA or "uncommitted"> — <one-line note>
+```
+
+The header block is still required. The full multi-line entry format remains required for medium and high profiles.
+
+## Step 3: Single-Phase Execution
+
+Low-profile tasks are always single-phase. The phased execution path (Step 4) does not apply to low-profile work.
+
+If the plan is single-phase:
+
+1. run tasks in dependency order
+2. run parallel groups concurrently when marked safe
+3. use worktrees only if the approved plan explicitly marks a group worktree-eligible
+4. when `Context Reset: enabled`, write `handoff.md` after every 4th task completion within the single phase
+5. after all tasks pass validation, run the plan's highest-level verification command
+6. run the full test suite for regressions
+
+If all succeed:
+
+- set `current_phase` to `review-execute`
+- keep `status` as `in_progress`
+- keep `plan_status` as `approved`
+- set `next_action` to `Run review-execute. Read .dev-kit/sessions/<session-id>/plan.md.`
+- update `updated_at`
+
+Refresh `.dev-kit/current.json` with the new `updated_at`.
+
+## Step 4: Phased Execution
+
+If the plan is multi-phase, execute a phase loop:
+
+`phase -> ready groups -> task validation -> integration gate -> checkpoint`
+
+### 4-1. Start Phase
+
+At phase start:
+
+- mark that phase as `executing` in `state.json.phase_status`
+- update `updated_at`
+
+### 4-2. Run Ready Groups
+
+For each ready group in the phase:
+
+- run sequentially if not marked parallel-safe
+- run concurrently if parallel-safe
+- run in worktrees only when the approved plan explicitly marked the group `worktree-eligible`
+
+### 4-3. Worktree Orchestration
+
+When using worktrees:
+
+- create one worktree per eligible group
+- set `DEV_KIT_STATE_ROOT` so each worktree points back to the canonical workspace state store
+- the group worker owns only its assigned files
+- validator runs inside the same worktree context
+- after all eligible groups pass validation, merge back in the merge order specified by the plan
+- after each merge, run at least the relevant integration checks
+
+If merge conflict or post-merge integration failure occurs:
+
+- stop the phase
+- do not write a checkpoint
+- if the issue is an implementation defect within the approved plan, re-run the affected groups
+- if the issue proves the approved plan structurally wrong, stop and report a planning contract violation
+
+### 4-4. Integration Gate
+
+After all groups in the phase pass task validation:
+
+- run the phase's integration gate commands from `Integration Gates`
+- verify boundary assumptions called out in the approved plan:
+  - interface compatibility
+  - shared type alignment
+  - config/schema compatibility
+  - end-to-end boundary behavior for the completed phases
+
+If the integration gate fails:
+
+- if the failure is an implementation defect within the approved plan, re-run the affected tasks
+- if the failure proves the approved plan structurally wrong, stop and report a planning contract violation
+
+### 4-5. Write Checkpoint
+
+Only after the integration gate passes, write:
+
+```text
+.dev-kit/sessions/<session-id>/checkpoints/P<N>-<name>.json
+```
+
+Checkpoint format:
+
+```json
+{
+  "schema_version": 1,
+  "phase": "P1",
+  "name": "foundation",
+  "status": "passed",
+  "created_at": "YYYY-MM-DDTHH:MM:SS+TZ",
+  "verified_scope": ["..."],
+  "validation": ["..."],
+  "integration_gate": {
+    "command": "...",
+    "result": "PASS"
+  },
+  "files_changed": ["path/to/file"],
+  "interfaces_established": ["..."],
+  "resume_notes": ["..."],
+  "tasks_completed": [
+    {
+      "task_id": 1,
+      "name": "...",
+      "status": "passed",
+      "commit_sha": "abc1234"
+    }
+  ],
+  "next_phase": "P2",
+  "next_task": {
+    "task_id": 4,
+    "name": "...",
+    "phase": "P2"
+  }
 }
 ```
 
-For each task, perform the following cycle:
+The `tasks_completed`, `next_phase`, and `next_task` fields are added when the approved plan sets `Context Reset: enabled`. When context reset is disabled, omit these fields — the checkpoint stays backward-compatible.
 
-**2-1. Compliance Check (subagent)**
+Then update `state.json`:
 
-Before starting a task, verify that the current task aligns with the plan:
+- mark that phase as `completed` in `phase_status`
+- update `updated_at`
 
-- Compare the plan's defined steps against current file state
-- Confirm that predecessor tasks' outputs exist as expected
-- Verify that all dependency tasks have completed
-- Confirm no other task modifying the same file is in progress
+### 4-5a. Write Handoff Artifact (Context Reset Mode)
 
-If issues found: notify the user and resolve before proceeding.
+When the approved plan's Execution Strategy sets `Context Reset: enabled`, the orchestrator writes a consolidated handoff artifact after each checkpoint:
 
-**2-2. Worker Implementation (subagent, via Agent tool)**
-
-Dispatch a subagent (worker) via the Agent tool to execute the task's steps:
-
-- The worker follows the steps exactly as written in the plan
-- The worker makes no arbitrary judgments beyond what the plan specifies
-- The worker performs each step's verification (test runs, etc.)
-- **If the plan references a project agent or skill for a step**, the worker should use it via the Agent tool or Skill tool. If the agent/skill is unavailable, execute the step directly.
-- The worker reports results back to the main agent
-- The main agent must NOT perform the worker's role inline — always spawn a subagent
-
-**2-3. Validator Review (subagent, via Agent tool — information-isolated)**
-
-Dispatch a separate subagent (validator) via the Agent tool. The validator operates under an **information barrier** — it knows only what the task was supposed to accomplish, not what the worker did or how.
-
-**Constructing the validator prompt:**
-
-The main agent must NOT compose the validator prompt freely. Use the fixed template below, filling only the four designated fields by copying verbatim from the plan document. Do not paraphrase, summarize, or add context beyond what the template specifies.
-
-```
-You are an independent validator. You have no knowledge of how this task
-was implemented. Your job is to judge whether the codebase currently meets
-the goal described below, by reading files and running tests yourself.
-
-## Task Goal
-
-{TASK_GOAL}
-— Copy the task's goal statement verbatim from the plan.
-
-## Acceptance Criteria
-
-{ACCEPTANCE_CRITERIA}
-— Copy the task's acceptance criteria verbatim from the plan.
-  Each criterion is a concrete, verifiable condition.
-
-## Files To Inspect
-
-{FILE_LIST}
-— Copy the list of files this task is expected to create or modify,
-  as listed in the plan.
-
-## Test Commands
-
-{TEST_COMMANDS}
-— Copy any test execution commands or verification steps
-  specified in the plan for this task.
-
-## Your Review Process
-
-1. Read each file in the file list directly from disk.
-2. For each acceptance criterion, determine whether it is met
-   based on what you see in the code. Record PASS or FAIL per criterion.
-3. Run every test command listed above. Record results.
-4. Run the full test suite to check for regressions.
-5. Check for residual issues: placeholder code (TODO, FIXME, stubs),
-   debug code (console.log, print statements), commented-out blocks.
-
-## Your Output
-
-Report your verdict as PASS or FAIL.
-
-- If PASS: confirm which criteria were verified and which tests passed.
-- If FAIL: list exactly which criteria failed and why, with file paths
-  and line numbers. Do not suggest fixes — only describe what is wrong.
+```text
+.dev-kit/sessions/<session-id>/handoff.md
 ```
 
-**What must NOT appear in the validator prompt:**
-- The worker's diff, logs, output, or return message
-- The worker's implementation approach or strategy
-- Any paraphrasing or summarization by the main agent — only verbatim plan content fills the template
-- Framing language that hints at the worker's approach (e.g., "check if the refactoring was done correctly" leaks that a refactoring was performed)
+Handoff artifact rules:
 
-**Why a fixed template:** The main agent has seen the worker's output and may unconsciously frame the validator's task in terms of what the worker did. A fixed template eliminates this channel — the validator sees only the plan's original specification, not the main agent's post-worker understanding.
+- `handoff.md` is NOT tracked in `state.json` artifacts — it follows the same pattern as `progress.md`
+- only the orchestrator writes this file (consistent with Hard Gate #2)
+- the file is overwritten (not appended) on each write — it always reflects the latest resumable state
+- when context reset is disabled, this file is not written
 
-**Validation results:**
-- **Pass:** Mark the task as completed and move to the next task
-- **Fail:** Deliver the validator's feedback to the worker and return to step 2-2 for re-implementation. The feedback is the validator's own assessment — do not augment it with the main agent's interpretation.
+Handoff template:
 
-**Retry limit:** If the same task fails 3 consecutive times, report the situation to the user and request intervention.
+```markdown
+# Handoff: [Feature Name]
 
-**Parallel Execution Rules (Hard Gate #4):**
+**Session:** <session-id>
+**Written At:** <ISO timestamp>
+**Plan:** .dev-kit/sessions/<session-id>/plan.md
+**Last Checkpoint:** P<N>-<name>
 
-Tasks that can run in parallel **must** be dispatched in parallel. Grouping them sequentially is prohibited.
+## Resume Point
 
-Parallel execution conditions (all must be met):
-- No dependencies on other tasks
-- No modifications to the same file
-- No changes to shared state (DB schema, config files, etc.)
+- **Current Phase:** P<N> — <phase-name>
+- **Phase Status:** [executing | next pending phase]
+- **Completed Tasks This Phase:** [list with short SHA]
+- **Next Task:** Task <N>: <name>
+- **Remaining Tasks This Phase:** [count]
+- **Remaining Phases:** [list]
 
-When running in parallel:
-- Dispatch an independent "worker subagent" for each task
-- After each worker completes, dispatch an independent "validator subagent" for review
-- After all parallel tasks complete, aggregate results before proceeding to the next dependent task
+## Completed Phase Summary
 
-Sequential execution required for:
-- Tasks with explicit dependencies (run after predecessor completes)
-- Tasks modifying the same file (must run sequentially)
+| Phase | Checkpoint | Tasks | Key Interfaces |
+|---|---|---|---|
+| P1 | P1-<name>.json | <count> passed | <interfaces> |
 
-### Step 3: E2E Verification Gate
+## Active Context
 
-After all tasks are complete (including the Final Verification Task if present), run the highest-level verification as an independent gate:
+- **Working Branch:** <branch name>
+- **Uncommitted Changes:** [yes/no — if yes, list files]
+- **Integration State:** [last integration gate result]
+- **Known Blockers:** [none or description]
 
-1. **Run the discovered verification command** from Step 0 (or the plan's Verification Strategy)
-2. **Run the full test suite** for regression check
-3. **Verify all plan success criteria** are met
+## Recovery Instructions
 
-**If all pass:** Report success summary to the user.
+1. Read this file and the approved plan.md
+2. Read the latest checkpoint JSON
+3. Read progress.md for task-level detail
+4. Resume from Task <N> in Phase P<N>
+5. Do not re-run completed phases unless explicitly requested
+```
 
-**Update `state.md` after Step 3 completes:**
-- Set Pipeline Progress execute checkbox to `[x]`
-- Add execution log entry: `execute-completed | all tasks passed`
-- Update Next Action: `"Run review-execute. Session: docs/sessions/<session-id>/"`
-- Update Last Updated timestamp
+The orchestrator also writes `handoff.md` in these additional situations:
 
-**If E2E verification fails — Failure Response Protocol:**
+- after every 4th consecutive task completion within a phase (even before the phase checkpoint)
+- when the user explicitly requests context reset preparation
+- before escalating to the user for a failure that may cause a long pause
 
-The E2E gate failure means individual tasks passed their validators but the system as a whole doesn't work. This is an integration problem, not a task-level problem.
+### 4-6. Complete Execute
 
-1. **Diagnose (attempt 1):**
-   - Read the failure output carefully
-   - Identify which tasks' interactions likely caused the failure
-   - Dispatch a worker subagent to apply a targeted fix (scoped to the diagnosed interaction)
-   - Re-run the E2E verification command
+After the final phase checkpoint:
 
-2. **Re-diagnose (attempt 2):**
-   - If the targeted fix didn't resolve it, re-read the failure output
-   - Check for a different root cause (the first diagnosis may have been wrong)
-   - Apply a second targeted fix
-   - Re-run the E2E verification command
+- run the highest-level verification command again on the integrated system
+- run the full test suite
+- set `current_phase` to `review-execute`
+- keep `status` as `in_progress`
+- keep `plan_status` as `approved`
+- set `next_action` to `Run review-execute. Read .dev-kit/sessions/<session-id>/plan.md.`
+- update `updated_at`
 
-3. **Escalate to user (after 2 failed attempts):**
-   - Report: what the E2E verification tests, what failed, what fixes were attempted, and the current hypothesis
-   - Let the user decide: continue debugging, re-plan specific tasks, or accept partial completion
-   - Do NOT keep retrying silently — 2 attempts is the limit before escalation
+Refresh `.dev-kit/current.json` with the new `updated_at`.
 
-## When To Stop
+## Recovery
 
-**Stop executing immediately and ask the user for help when:**
+On re-entry after interruption:
 
-- A blocker occurs (missing dependency, test fails, instruction unclear)
-- The plan has critical gaps preventing execution
-- You don't understand an instruction
-- Verification fails repeatedly
+1. resolve the preferred session from the shared recovery helper
+2. read `state.json`
+3. if `handoff.md` exists, read it for a consolidated resume snapshot including the current task position and integration state
+4. inspect `phase_status`
+5. inspect existing checkpoint JSON
+6. find the last fully checkpointed phase
+7. read `progress.md` if it exists to identify the last validated task within the current phase
 
-**Ask for clarification rather than guessing.**
+Resume rules:
 
-## Validator Checklist
+- if no checkpoint exists, restart the current phase from the beginning
+- if a phase checkpoint exists, do not re-run that phase unless the user explicitly requests rollback
+- if merge or integration stopped before checkpoint but the plan still stands, re-enter that phase in `executing` state
+- if `progress.md` shows a task within the current phase as PASS but the phase has no checkpoint, resume from the next incomplete task in that phase rather than restarting the entire phase
+- if `handoff.md` exists and is newer than the latest checkpoint, use its Resume Point section to identify the exact next task rather than scanning `progress.md`
 
-After each task completion, verify:
+## Failure Response
 
-- [ ] Did the tests pass?
-- [ ] Were the specified files created/modified correctly?
-- [ ] Does the code match what was specified in the steps?
-- [ ] Was the commit created correctly?
+Escalate to the user when:
+
+- a task fails validation 3 times
+- a worktree merge assumption is invalid
+- phase integration fails twice for different attempted fixes
+- the approved plan contract is missing critical information
+- the environment cannot run required verification
+- a git commit fails due to unexpected repository state (dirty index, merge conflict from parallel work)
+
+When escalating, report whether the next action should be:
+
+- return to `execute` after a targeted fix
+- use `systematic-debugging` for deeper failure analysis
+- return to `planning` because the approved plan violated its own planning contract
 
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails |
 |---|---|
-| Executing without reviewing the plan | Plan errors propagate into implementation |
-| Skipping verification steps | Errors accumulate, debugging cost increases later |
-| Guessing when blocked | Spec drift, rework required |
-| Running non-parallelizable tasks in parallel | File conflicts, dependency tangles |
-| Running parallelizable tasks sequentially | Wasted time, unnecessary execution delay |
-| Main agent performing worker/validator roles inline | Defeats independent verification; confirmation bias |
-| Passing worker output to the validator | Validator anchors on worker's framing instead of judging independently |
-| Composing the validator prompt freely instead of using the fixed template | Main agent unconsciously leaks worker context through word choice and framing |
-| Paraphrasing the plan instead of copying verbatim into the template | Paraphrasing filters through the main agent's post-worker understanding, introducing bias |
-| Starting implementation on main/master without explicit user consent | Prohibited without explicit approval |
-| Skipping the E2E gate because individual tasks all passed | Task-level pass ≠ system-level pass; integration bugs hide between tasks |
-| Retrying E2E failures more than twice without user escalation | Wastes budget; user may have context about the root cause |
+| Letting workers update `.dev-kit/` state | Creates race conditions and resume corruption |
+| Treating task validation as phase completion | Misses integration failures between groups |
+| Writing checkpoints before integration passes | Makes resume trust an invalid state |
+| Using worktrees without plan approval | Hidden overlap and merge errors |
+| Silently reopening planning inside execute | Breaks the frozen-plan contract |
+| Skipping final `review-execute` because execute already validated tasks | Removes the independent final verification step |
+| Writing progress.md from workers or validators | Breaks single-writer state; only the orchestrator appends |
+| Writing handoff.md from workers or validators | Same as progress.md — single-writer state; only the orchestrator writes |
+| Writing handoff.md when context reset is disabled | Unnecessary artifact noise for sessions that do not need it |
+
+## Minimal Checklist
+
+- [ ] Was the full approved plan read before execution?
+- [ ] Did `plan_status` already equal `approved` before execute began?
+- [ ] Did only the orchestrator update `.dev-kit/current.json` and `state.json`?
+- [ ] Did every task pass isolated validation?
+- [ ] Did each phase pass its integration gate before checkpointing?
+- [ ] Was each task result appended to `progress.md`?
+- [ ] Were task commits created following the SHOULD-level git commit guidance?
+- [ ] Was `handoff.md` written at each checkpoint when context reset is enabled?
+- [ ] Does `next_action` point to `review-execute` when execute completes?
 
 ## Transition
 
-After plan execution is complete:
+After execute finishes:
 
-- To wrap up the work branch → report results to the user and suggest next steps
-- If independent verification is needed → suggest transitioning to the `review-execute` skill
-- If ambiguity is discovered during execution → return to the `clarify` skill to resolve
-- If the plan itself needs modification → return to the `planning` skill to revise
-
-This skill itself **does not invoke the next skill.** It ends by reporting execution results and letting the user choose the next step.
+- proceed to `review-execute`
+- if repeated failures point to an unclear bug, use `systematic-debugging`
+- if the approved plan proves structurally wrong, stop and report a planning contract violation

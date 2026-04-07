@@ -1,242 +1,295 @@
 ---
 name: review-execute
-description: Use after execute completes to independently verify the implementation. Reads only the plan document and inspects the codebase from scratch — information-isolated from the execution context. Produces a structured review document with PASS/FAIL verdict. Triggers when the user says "review the work", "verify the implementation", "check if the plan was executed correctly".
+description: Final independent verification for the unified Dev Kit workflow stage `review-execute`.
 ---
 
-# Review Work
+# Review-Execute Work
 
-Independently verifies implementation results using only the plan document and the codebase. Receives no information from the execution process.
+Independently verifies the final result of the approved `plan.md`. This is the final `review-execute` stage in the mandatory `clarify -> planning -> execute -> review-execute` workflow.
 
 ## Core Principle
 
-The reviewer shares no memory with the executor. The plan's stated goals and the current state of the codebase — these two alone are the basis for judgment.
+Review is isolated from execution context. The reviewer judges the current codebase against the approved plan and verification criteria, not against execution logs or worker narratives. Review verifies results; it does not reopen planning.
 
 ## Hard Gates
 
-1. **Do not receive execution context.** No logs from execute, no worker output, no diffs, no task completion summaries, no conversation history. The only input is the plan file path.
-2. **Read the plan document directly.** Read the plan file from disk — not a summary or a passed-along description.
-3. **Run all tests yourself.** Do not trust previous execution results. Run the full test suite and every verification command specified in the plan.
-4. **Verdict is PASS or FAIL.** No conditional passes, no "almost done", no "only minor issues remain". Binary only.
-5. **Save the review document to a file.** Review results must be saved as a structured document. Never end with a verbal report alone.
-6. **Do not modify code.** This skill is read-only. If issues are found, report them — do not fix them.
+1. **Do not receive execution context.** No worker output, no execution summaries, no task-level validator results.
+2. **Read `plan.md` directly.** Review uses the canonical approved plan, not a summary.
+3. **Run verification independently.** Re-run stated verification commands and the full test suite yourself.
+4. **Do not modify code.** Review reports findings only.
+5. **Verdict is PASS or FAIL.** No conditional pass.
+6. **State and user-facing text say `review-execute`.** Use `review-execute` consistently for the pipeline step, session phase, and skill invocation text.
+7. **Do not route review failures back to planning.** Planning quality was closed before execute.
 
 ## When To Use
 
-- After execute execution is complete
-- When the user says "review the work", "verify the implementation", "check if the plan was executed correctly"
-- When implementation is done but independent verification is needed
+- After `execute` completes
+- After the upstream `clarify` and `planning` phases have already materialized the approved plan consumed by execute
+- When the user asks to review or verify the implementation
+- When final independent verification is needed before calling a session complete
 
 ## When NOT To Use
 
 - While execute is still in progress
-- When no plan document exists (use `planning` first)
-- When the goal is a general code review (this skill verifies "implementation against plan")
+- When no canonical approved `plan.md` exists
+- When `plan_status` is not `approved`
+- For general diff review unrelated to plan execution
 
 ## Input
 
-The only input to this skill is the **plan file path**.
+Canonical input:
 
-```
-Simple workflow:  docs/sessions/<session-id>/plan.md
-Complex workflow: docs/sessions/<session-id>/plans/M<N>-<name>.md
-```
-
-### Session Discovery
-
-- If the user or resume skill provides a plan file path or session path, use it.
-- Otherwise, scan `docs/sessions/` for the most recent session where execute is completed and review-execute is not yet completed.
-- Read the plan file path from the session's `state.md` Files table or Next Action field.
-
-The following must never be provided as input:
-
-- Execution logs or task completion summaries from execute
-- Output or diffs from worker subagents
-- Validation results from validator subagents
-- Conversation history from the execution session
-
-## Process
-
-### Phase 1: Load and Analyze Plan Document
-
-1. Receive the plan file path as input
-2. Read the plan document directly from disk
-3. Extract the following:
-   - **Goal:** What this plan implements
-   - **Work Scope:** In scope / Out of scope
-   - **Task List:** Each task's name, acceptance criteria, and target files
-   - **File Structure Mapping:** Complete list of files to be created or modified
-   - **Commit Structure:** Commit messages and scope specified in the plan
-   - **Test Commands:** All test execution commands specified in the plan
-
-Use the extracted results as the foundation for the review document.
-
-### Phase 2: Codebase Inspection
-
-Inspect the codebase against the files specified in the plan.
-
-1. **File existence check:** Verify that all files specified in the plan actually exist
-2. **Content alignment check:** Inspect whether each file's content matches the plan's requirements (function signatures, type definitions, logic, etc.)
-3. **Residual artifact check:**
-   - Placeholder code (TODO, FIXME, "implement later", stub functions)
-   - Debug code (console.log, print debugging, commented-out code blocks)
-   - Unexpected changes outside the plan's scope
-4. **Verify acceptance criteria per task.** Check each criterion stated in the plan one by one and record whether it is met.
-
-### Phase 3: Test Execution
-
-1. Run all **individual test commands** specified in the plan
-2. Run the **full test suite** to check for regressions
-3. Record each test's result (PASS/FAIL)
-4. If any test fails, record the error message
-
-### Phase 4: Git History Verification
-
-1. Compare the commit structure specified in the plan against the actual `git log`
-2. Verify that commit messages match the plan
-3. Verify that each commit's change scope is appropriate (no unrelated changes mixed into a single commit)
-
-### Phase 5: Verdict and Review Document
-
-Combine results from Phases 2–4 to reach a verdict.
-
-**PASS conditions (all must be met):**
-
-- All files specified in the plan exist
-- Each task's acceptance criteria are met
-- All tests pass
-- No regressions
-- No placeholder or debug code remains
-
-**FAIL (if any of the following apply):**
-
-- A file specified in the plan is missing
-- A test fails
-- A regression is found
-- Placeholder code remains
-- The plan's goal is not achieved
-
-After reaching a verdict, write and save the review document.
-
-## Review Document
-
-### Save Location
-
-```
-Simple workflow:  docs/sessions/<session-id>/review.md
-Complex workflow: docs/sessions/<session-id>/reviews/M<N>-<name>-review.md
+```text
+.dev-kit/sessions/<session-id>/plan.md
 ```
 
-Determine path from the session's `state.md` `Workflow` field:
-- If `Workflow` is `simple` → use the simple path
-- If `Workflow` is `complex` → use the per-milestone path in `reviews/`
+Session discovery order:
 
-(User preferences for review location override this default.)
+1. If the user provides a session path, use it
+2. Otherwise, read `.dev-kit/current.json`
+3. If the pointer is missing, invalid, or not resumable, use the shared session-recovery helper to scan `.dev-kit/sessions/*/state.json` for sessions with `status` in `in_progress` or `paused`
+4. If no resumable session exists, stop and tell the user to run `execute` or provide an explicit session path
 
-### Document Structure
+Read:
+
+- `.dev-kit/sessions/<session-id>/state.json`
+- `.dev-kit/sessions/<session-id>/plan.md`
+- `.dev-kit/sessions/<session-id>/plan-review.md`
+
+## Review Process
+
+### Step 1: Load The Approved Plan
+
+Read `plan.md` directly and extract:
+
+- goal
+- scope
+- file structure mapping
+- tasks and acceptance criteria
+- verification strategy
+- execution strategy sections that affect expected final state
+
+Confirm that:
+
+- `plan_status` is `approved`
+- `plan-review.md` exists as the record of the final planning critique
+- the approved plan contract is present enough for review to judge the result
+
+If the approved plan contract is missing, contradictory, or unverifiable at review time, stop and report a planning contract violation rather than mutating the normal workflow state model.
+
+### Step 2: Inspect Code Against Plan
+
+Verify:
+
+1. all planned files exist where expected
+2. planned behavior is reflected in the code
+3. no placeholder or debug artifacts remain
+4. no unexpected changes outside plan scope materially alter the result
+5. `.dev-kit/**` workflow metadata is ignored except for reading state
+6. final behavior matches the plan's acceptance basis
+
+### Step 3: Run Verification
+
+Run:
+
+1. all explicit verification commands from the plan
+2. the highest-level verification strategy command
+3. the full test suite for regressions
+
+### Evaluator Calibration
+
+Calibration anchors the verdict to the approved plan's acceptance criteria. The examples below are generic patterns; apply them to the specific plan being reviewed.
+
+**PASS examples** — these patterns warrant PASS when the plan's acceptance criteria are satisfied:
+
+- all planned behavior works as specified, even if the implementation approach differs from what the plan described, as long as acceptance criteria are met
+- minor cosmetic differences (whitespace, variable naming style) that do not affect behavior or violate plan requirements
+- additional defensive code (error handling, input validation) beyond what the plan specified, provided it does not alter the planned behavior
+- test coverage that exceeds plan requirements
+
+**FAIL examples** — these patterns warrant FAIL because acceptance criteria are not met:
+
+- a planned endpoint or function exists but returns incorrect results for the documented scenarios
+- verification commands specified in the plan do not pass
+- placeholder implementations (TODO comments, stub functions, hardcoded values standing in for real logic)
+- missing files that the plan explicitly lists as deliverables
+- regressions in existing functionality detected by the test suite
+
+**NOT grounds for FAIL** — these observations fall outside the plan's acceptance criteria:
+
+- "the code could be more efficient" when no performance criterion exists in the plan
+- "this module should also be refactored" when the module is outside the plan's scope boundary
+- "the UI could look better" when no visual design criterion exists in the plan
+- "additional tests should be written" when the plan's verification strategy is already satisfied
+- style preferences not codified in the project's linter or the plan's acceptance criteria
+
+**Boundary cases** — when the evidence is ambiguous, apply these tiebreakers:
+
+1. re-read the plan's acceptance criteria literally — if the criterion says "endpoint returns 200 on valid input," verify exactly that, not whether the response body is optimally structured
+2. if a verification command intermittently fails, re-run it — a consistent failure is FAIL; a transient environment issue is not grounds for FAIL if the underlying behavior is correct
+3. out-of-scope changes that are present but harmless do not cause FAIL unless they materially alter planned behavior or introduce regressions
+
+### Step 4: Reach Verdict
+
+Consult the Evaluator Calibration section above before applying the verdict criteria.
+
+**PASS** only if all are true:
+
+- plan goals are met
+- acceptance criteria are satisfied at the final system level
+- all required verification passes
+- no regressions are found
+- no placeholder or debug artifacts remain
+
+Otherwise, verdict is **FAIL** due implementation drift from the approved plan.
+
+## Review Artifact
+
+Write:
+
+```text
+.dev-kit/sessions/<session-id>/review.md
+```
+
+Use this structure:
 
 ```markdown
 # [Feature Name] Review
 
 **Date:** YYYY-MM-DD HH:MM
-**Plan Document:** `docs/sessions/<session-id>/plan.md`
+**Plan Document:** `.dev-kit/sessions/<session-id>/plan.md`
+**Plan Version:** [integer]
 **Verdict:** PASS / FAIL
 
----
+## 1. Scope Verification
 
-## 1. File Inspection Against Plan
-
-| Planned File | Status | Notes |
+| Planned Area | Result | Notes |
 |---|---|---|
-| `path/to/file` | OK / Missing / Mismatch | Details |
+| `...` | PASS / FAIL | ... |
 
-## 2. Test Results
+## 2. Verification Results
 
-| Test Command | Result | Notes |
+| Command | Result | Notes |
 |---|---|---|
-| `pytest tests/...` | PASS / FAIL | Error details if failed |
+| `...` | PASS / FAIL | ... |
 
-**Full Test Suite:** PASS / FAIL (N passed, M failed)
-
-## 3. Code Quality
+## 3. Code Hygiene
 
 - [ ] No placeholders
 - [ ] No debug code
-- [ ] No commented-out code blocks
-- [ ] No changes outside plan scope
+- [ ] No commented-out blocks
+- [ ] No material drift outside plan scope
 
-**Findings:**
-- (Describe with file path and line number)
+## 4. Findings
 
-## 4. Git History
-
-| Planned Commit | Actual Commit | Match |
-|---|---|---|
-| `feat: add X` | `abc1234 feat: add X` | OK / Mismatch |
+- [file path and line references for failures]
 
 ## 5. Overall Assessment
 
-(Summary of the overall judgment. If FAIL, describe specifically which items failed and why.)
-
-## 6. Follow-up Actions
-
-- (If FAIL: list of items that need to be fixed)
-- (If PASS: record improvement suggestions if any)
+[Why the verdict is PASS or FAIL]
 ```
 
-### State Update
+### Low-Profile Compact Review
 
-After the review document is saved, update the session state file (`docs/sessions/<session-id>/state.md`):
+When `execution_profile` is `low`, the review artifact MAY use this compact format:
 
-1. **Files table:** Add row using the same path determined by the Save Location rules above:
-   - Simple workflow: `review.md | review-execute | created`
-   - Complex workflow: `reviews/M<N>-<name>-review.md | review-execute | created`
-2. **Pipeline Progress:** Check the `review-execute` checkbox
-3. **Execution Log:** Add entry `review-execute-completed | Verdict: PASS/FAIL`
-4. **Status and Next Action:**
-   - If **PASS** and `Workflow` is `simple`: Update Status to `completed`, Next Action to `"Session complete. Consider simplify-code for a final quality pass."`
-   - If **PASS** and `Workflow` is `complex`: Keep Status as `in-progress`, Next Action to `"Return to long-execute. Milestone review passed."` — long-execute manages its own state transitions.
-   - If **FAIL:** Keep Status as `in-progress`, Next Action to `"Fix issues and re-run execute, then review-execute."`
-5. **Last Updated:** Update the timestamp
+```markdown
+# [Feature Name] Review
 
-## When To Stop
+**Verdict:** PASS / FAIL
+**Plan Version:** [integer]
 
-Stop immediately and notify the user in the following situations:
+## Verification Results
 
-- The plan file does not exist or cannot be read
-- The test execution environment is not ready (e.g., dependencies not installed)
-- The plan document format cannot be parsed
+| Command | Result |
+|---|---|
+| `...` | PASS / FAIL |
 
-**When in doubt, do not guess — ask the user.**
+## Assessment
+
+[1-3 sentences: why PASS or FAIL]
+```
+
+The compact review omits: Scope Verification table, Code Hygiene checklist, detailed Findings. These are required for medium and high profiles. If the verdict is FAIL, the compact review MUST still include file path and line references for the failure.
+
+## State Update
+
+After saving `review.md`, update `.dev-kit/sessions/<session-id>/state.json`:
+
+- set `artifacts.review` to `.dev-kit/sessions/<session-id>/review.md`
+- update `updated_at`
+
+Then set state according to the verdict:
+
+- If `PASS`:
+  - `status`: `completed`
+  - `current_phase`: `review-execute`
+  - `plan_status`: `approved`
+  - `next_action`: `Session complete.`
+
+Recommended state write pattern:
+
+```bash
+python3 ./scripts/dev_kit_state.py write-json --path ".dev-kit/sessions/<session-id>/state.json" <<'JSON'
+{...}
+```
+
+`failure_reason` should remain `null` on PASS.
+
+- If `FAIL` due implementation drift from the approved plan:
+  - `status`: `in_progress`
+  - `current_phase`: `execute`
+  - `plan_status`: `approved`
+  - `next_action`: `Run execute. Address review findings against .dev-kit/sessions/<session-id>/plan.md.`
+  - `failure_reason`: `null`
+
+- If `FAIL` due infra or external blocker requiring user action (max retry or contract violation):
+  - `status`: `paused`
+  - `current_phase`: `review-execute`
+  - `plan_status`: `approved`
+  - `next_action`: `Resume from the same review point after dependency is restored.`
+  - `failure_reason`: `...` (required)
+
+Review does not write any exceptional workflow state.
+
+Then update `.dev-kit/current.json` according to the outcome:
+
+- If `PASS`, remove `.dev-kit/current.json` if it still points at this now-completed session
+- Otherwise, refresh `.dev-kit/current.json` with the same pointer and new `updated_at`
+
+Use the helper command to avoid races:
+
+```bash
+python3 ./scripts/dev_kit_state.py clear-current --session-id <session-id>
+python3 ./scripts/dev_kit_state.py write-json --path ".dev-kit/current.json" <<'JSON'
+{...}
+```
+```
 
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails |
 |---|---|
-| Reading execute execution logs to verify | Information isolation violation. Anchors on the executor's framing |
-| Trusting previous test results instead of running tests | Environment may have changed after execution. Not independent verification |
-| Finding issues and fixing them directly | Violates separation of reviewer and implementer roles |
-| Giving a "close enough, PASS" verdict | No conditional passes. If criteria are not met, it is FAIL |
-| Delivering review results verbally without saving a document | No verification record remains. Untraceable |
-| Judging by criteria not in the plan | The reviewer judges only by the plan's criteria. Adding arbitrary standards is prohibited |
-| Receiving a plan summary and verifying from that | Information is lost during summarization. The original must be read directly |
+| Reading execute logs to help review | Breaks isolation |
+| Trusting previous verification results | Final review must verify current state |
+| Treating `.dev-kit/**` as product code | Workflow metadata is not part of implementation scope |
+| Recording the phase as `review` in state | The canonical session phase is `review-execute` |
+| Sending review failures back to planning | Review verifies output, not plan quality |
+| Failing based on subjective quality beyond plan criteria | Review judges against the approved plan, not ideal code |
 
 ## Minimal Checklist
 
-Self-check when review is complete:
-
-- [ ] Read the plan document directly from disk
-- [ ] Did not receive execute execution results as input
-- [ ] Ran all tests myself
-- [ ] Inspected all tasks in the plan
-- [ ] Verdict is either PASS or FAIL
-- [ ] Saved the review document to a file
+- [ ] Was `plan.md` read directly?
+- [ ] Was review isolated from execute context?
+- [ ] Were required verification commands re-run?
+- [ ] Was `review.md` saved?
+- [ ] Were FAIL verdicts grounded in plan acceptance criteria, not subjective quality?
+- [ ] Does state now point to completion or execute?
 
 ## Transition
 
-After review is complete:
+- PASS -> session is complete
+- FAIL due implementation drift -> return to `execute`
+- planning contract violation -> stop and report the issue outside the normal workflow state model
 
-- **PASS** → Report results to the user and suggest next steps (PR creation, deployment, etc.)
-- **FAIL** → Report failure items to the user. If fixes are needed, suggest transitioning to the `execute` or `systematic-debugging` skill
-- If the plan itself has issues → suggest returning to the `planning` skill to revise the plan
-
-This skill itself **does not invoke the next skill.** It saves the review document, reports results, and lets the user decide the next step.
+This stage never replaces the upstream flow. It is the final verifier for work that has already passed through `clarify`, `planning`, and `execute`.

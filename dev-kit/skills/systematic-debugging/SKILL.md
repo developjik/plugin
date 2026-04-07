@@ -34,6 +34,10 @@ Use this skill when:
 - A bug occurs in production or locally
 - Responses, state, rendering, or query results differ from expectations
 - Investigating performance degradation, timeouts, race conditions, or intermittent failures
+- Flaky tests with arbitrary delays → see `condition-based-waiting.md` in this directory
+- Need to trace root cause through call chain → see `root-cause-tracing.md` in this directory
+- Bug requires multi-layer validation → see `defense-in-depth.md` in this directory
+- Need to find which test pollutes state → see `find-polluter.sh` in this directory
 - Something breaks again after being fixed once or more
 
 The following excuses are not accepted:
@@ -272,3 +276,14 @@ Completion requires:
 - Verification results are documented
 
 Without all four, debugging is not complete.
+
+## Transition
+
+After debugging is complete:
+
+- If debugging was invoked from a pipeline skill (execute, review-execute) -> return to the invoking skill or check `.dev-kit/current.json` plus the active session `state.json` for the current next action
+- If the fix requires re-planning → suggest returning to the `planning` skill
+- If the fix revealed scope ambiguity → suggest returning to the `clarify` skill
+- For general code quality after fixing → suggest `clean-ai-slop` (if AI-generated) or `simplify-code`
+
+This skill itself **does not invoke the next skill.** It reports debugging results and lets the user decide the next step.

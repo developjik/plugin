@@ -19,12 +19,13 @@ Changed code is the only review target. Each review dimension runs independently
 4. **Fix issues directly.** This skill produces code changes, not just a report. If a finding is actionable, fix it.
 5. **Skip false positives silently.** If a finding is not worth addressing, move on. Do not argue with the finding or explain why it was skipped.
 6. **Do not expand scope beyond the diff.** Review only the changed code. Do not refactor untouched code, even if it has the same issues.
+7. **Treat `.dev-kit/**` as workflow metadata.** Exclude Dev Kit session state, generated plan artifacts, and checkpoint files from review scope.
 
 ## When To Use
 
 - After any implementation work when code quality verification is needed
 - When the user says "simplify", "review the changes", or "check the code"
-- After execute execution, before review-execute, as an intermediate quality pass
+- After execute execution, before `review-execute`, as an intermediate quality pass
 - When the user suspects duplicated logic, inefficiencies, or hacky patterns in recent changes
 - **Disambiguation:** If the user says "clean up" without further context, and the code was AI-generated, prefer `clean-ai-slop`. If the code is not specifically AI-generated, or the user says "simplify" or "review the changes", use this skill.
 
@@ -41,10 +42,11 @@ Changed code is the only review target. Each review dimension runs independently
 
 1. Run `git diff` to see unstaged changes
 2. If no output, run `git diff HEAD` to check staged changes
-3. If still no output, check for recently modified files that the user mentioned or that were edited earlier in this conversation
-4. If no changes can be identified, notify the user and stop
+3. Remove paths under `.dev-kit/` from the review scope
+4. If still no output, check for recently modified files that the user mentioned or that were edited earlier in this conversation
+5. If no non-`.dev-kit/` changes can be identified, notify the user and stop
 
-Capture the full diff output — this is the input for all three agents.
+Capture the filtered diff output — this is the input for all three agents.
 
 ### Phase 2: Launch Three Review Agents in Parallel
 
@@ -169,6 +171,7 @@ Provide this prompt to the agent:
 | Reporting findings without fixing them | Defeats the purpose of the skill; user must do manual work |
 | Arguing with or explaining skipped findings | Wastes context and time; skip and move on |
 | Reviewing unchanged code "while we're here" | Scope creep; violates Hard Gate #6 |
+| Reviewing `.dev-kit/**` metadata like product code | Session state and artifacts are workflow metadata, not implementation targets |
 | Fixing issues without running tests afterward | May introduce regressions silently |
 | Bundling "while I'm here" improvements into fixes | Mixes review fixes with unrelated changes; muddles the diff |
 
@@ -187,7 +190,7 @@ Provide this prompt to the agent:
 
 After simplification is complete:
 
-- If this was a post-implementation quality pass → suggest transitioning to `review-execute` for independent plan verification
+- If this was a post-implementation quality pass -> suggest transitioning to `review-execute` for independent plan verification
 - If issues were found and fixed → user may want to run `simplify-code` again to verify the fixes are clean
 - If a bug was discovered during review → suggest `systematic-debugging`
 
