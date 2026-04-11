@@ -2,3 +2,5 @@
 .claude/
 .superset
 __pycache__/
+.managed-agent-kit/
+.harness-design-kit/

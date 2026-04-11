@@ -4,67 +4,13 @@ PLUGIN_DIR="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname "$0"
 COMPACT_SUMMARY="${DEV_KIT_SUMMARY_COMPACT:-0}"
 
 WORKSPACE_ROOT=""
+HOOK_PAYLOAD=""
 if [ -n "${DEV_KIT_STATE_ROOT:-}" ]; then
   WORKSPACE_ROOT="$DEV_KIT_STATE_ROOT"
 elif [ ! -t 0 ]; then
   HOOK_PAYLOAD="$(cat)"
   WORKSPACE_ROOT="$(
-    printf '%s' "$HOOK_PAYLOAD" | python3 -c '
-from __future__ import annotations
-
-import json
-import sys
-import subprocess
-from pathlib import Path
-
-
-def nearest_dev_kit_root(start: Path) -> Path | None:
-    for candidate in (start, *start.parents):
-        state_root = candidate / ".dev-kit"
-        if (state_root / "current.json").is_file():
-            return candidate
-        if (state_root / "sessions").is_dir():
-            return candidate
-    return None
-
-
-raw = sys.stdin.read()
-if not raw.strip():
-    raise SystemExit(0)
-
-try:
-    payload = json.loads(raw)
-except json.JSONDecodeError:
-    raise SystemExit(0)
-
-cwd = payload.get("cwd")
-if not isinstance(cwd, str) or not cwd:
-    raise SystemExit(0)
-
-start = Path(cwd).expanduser().resolve()
-root = nearest_dev_kit_root(start)
-if root is not None:
-    print(root)
-    raise SystemExit(0)
-
-try:
-    git_result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        cwd=str(start),
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-except (FileNotFoundError, subprocess.CalledProcessError):
-    pass
-else:
-    git_root = git_result.stdout.strip()
-    if git_root:
-        print(git_root)
-        raise SystemExit(0)
-
-print(start)
-'  
+    printf '%s' "$HOOK_PAYLOAD" | python3 "$PLUGIN_DIR/scripts/dev_kit_state.py" resolve-workspace-root 2>/dev/null || true
   )"
 fi
 
@@ -108,6 +54,14 @@ elif [ -n "$WORKSPACE_ROOT" ] && [ -n "$SESSION_ID" ]; then
     if [ -n "$RECENT_GIT" ]; then
       printf '\nRecent Commits:\n'
       printf '%s\n' "$RECENT_GIT" | sed 's/^/  /'
+    fi
+  fi
+
+  # Show compound learnings summary if available
+  if [ -f "$WORKSPACE_ROOT/.dev-kit/learnings/index.json" ]; then
+    LEARNINGS_SUMMARY="$(python3 "$PLUGIN_DIR/scripts/dev_kit_state.py" learnings-summary --workspace-root "$WORKSPACE_ROOT" --max-results 3 2>/dev/null || true)"
+    if [ -n "$LEARNINGS_SUMMARY" ]; then
+      printf '\n%s\n' "$LEARNINGS_SUMMARY"
     fi
   fi
 fi

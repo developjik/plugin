@@ -67,7 +67,7 @@
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["brief", "plan", "plan_review", "review"],
+      "required": ["brief", "plan", "plan_review", "review", "compound"],
       "properties": {
         "brief": {
           "type": ["string", "null"]
@@ -80,6 +80,9 @@
         },
         "review": {
           "type": ["string", "null"]
+        },
+        "compound": {
+          "type": ["string", "null"]
         }
       }
     },
@@ -89,6 +92,10 @@
         "type": "string",
         "enum": ["pending", "executing", "completed"]
       }
+    },
+    "compound_status": {
+      "type": ["string", "null"],
+      "enum": ["not_started", "extracted", "skipped", null]
     },
     "created_at": {
       "type": "string",

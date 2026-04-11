@@ -2,261 +2,265 @@
 
 English | [한국어](./README.ko.md)
 
-Structured development workflow plugin for Claude Code and Codex.
+Dev Kit is a structured development workflow plugin for Claude Code and Codex. It gives normal implementation work one official path, keeps session state under `.dev-kit/`, and leaves debugging and code-quality review as explicit standalone skills.
 
-## Overview
+## When To Use Dev Kit
 
-Dev Kit provides a single official development flow:
+Use the main Dev Kit flow when you want a tracked implementation workflow:
+
+- Start a scoped feature or refactor and keep artifacts such as `brief.md`, `plan.md`, and `review.md`
+- Resume interrupted work from `.dev-kit/current.json` or a resumable session
+- Keep planning, execution, and final review explicitly separated
+
+Use the standalone skills when the task is not normal feature execution:
+
+- `systematic-debugging` for bugs, flaky tests, and unexpected behavior
+- `simplify-code` or `clean-ai-slop` for post-change cleanup and review
+- `rob-pike` for performance work
+- `compound` for managing the learning store in `.dev-kit/learnings/`
+
+## Installation
+
+If you opened this README directly, install the plugin first:
+
+- Codex: [../docs/guides/install/codex-local-plugin-install.md](../docs/guides/install/codex-local-plugin-install.md)
+- Claude Code: [../docs/guides/install/claude-code-local-plugin-install.md](../docs/guides/install/claude-code-local-plugin-install.md)
+
+## Workflow At A Glance
+
+Dev Kit's official implementation flow is:
 
 `clarify -> planning -> execute -> review-execute`
 
-Every task passes through all four phases. Complexity still matters, but it changes phase depth rather than visible routing. `clarify` may run in direct mode when the request is already concrete, and `planning` may freeze a minimal approved plan for trivial work, but neither phase is skipped. Internally, `planning` uses a `planner`, `critic`, and `readiness-checker` bundle while remaining one visible phase. `execute` then acts as a pure execution stage, and `review-execute` verifies the final result against that approved plan.
+What this guarantees:
 
-Session recovery is built into the phase skills through a shared state helper. It is no longer a separate visible skill.
-Resumable sessions include `in_progress` and `paused` states; `completed` sessions are intentionally excluded from resume selection.
+- `clarify` and `planning` are materialized before normal execution begins
+- Hooks are read-only and never auto-start or auto-resume phases
+- `planning` owns plan quality and execute readiness
+- `execute` follows the approved plan instead of redesigning it
+- `review-execute` performs final verification in isolation from execution context
 
-The plugin stores workflow state under `.dev-kit/` at the workspace root:
+## Quick Start
 
-- `.dev-kit/current.json` identifies the preferred resumable session when one exists
-- `.dev-kit/sessions/<session-id>/state.json` is the machine-readable source of truth
-- `brief.md`, `plan.md`, `plan-review.md`, and `review.md` stay beside that state for humans
-- `checkpoints/` stores phase checkpoint JSON files for phased runs
+### Normal Feature Work
 
-This is a breaking storage change. The old Markdown session layout is no longer used and old sessions are not migrated.
+1. Start the workflow explicitly:
 
-## Workflow
+   ```text
+   Use Dev Kit for this task. Run clarify for adding CSV export to the orders page.
+   ```
+
+2. After `clarify`, expect:
+   - `.dev-kit/current.json`
+   - `.dev-kit/sessions/<session-id>/state.json`
+   - `.dev-kit/sessions/<session-id>/brief.md`
+
+3. Continue with planning:
+
+   ```text
+   Run planning for the active Dev Kit session.
+   ```
+
+4. After `planning`, expect:
+   - `.dev-kit/sessions/<session-id>/plan.md`
+   - `.dev-kit/sessions/<session-id>/plan-review.md`
+
+5. Execute the approved plan:
+
+   ```text
+   Execute the approved Dev Kit plan.
+   ```
+
+6. After `execute`, expect code changes plus execution artifacts such as:
+   - `.dev-kit/sessions/<session-id>/progress.md`
+   - `.dev-kit/sessions/<session-id>/checkpoints/*.json` for phased runs
+   - `.dev-kit/sessions/<session-id>/handoff.md` when context reset mode is used
+
+7. Run final verification:
+
+   ```text
+   Run review-execute for the active Dev Kit session.
+   ```
+
+8. After `review-execute`, expect:
+   - `.dev-kit/sessions/<session-id>/review.md`
+   - optionally `.dev-kit/sessions/<session-id>/compound.md` when a reusable learning is extracted
+
+### Standalone Entries
 
 ```text
-clarify -> planning -> execute -> review-execute
-
-clarify
-  - is the mandatory entry phase for every new task
-  - resolves ambiguity or confirms that little ambiguity remains
-  - may run interactively or in direct mode depending on request clarity
-  - writes brief.md
-  - initializes state.json and current.json
-  - leaves planning as the next visible step
-
-planning
-  - is the mandatory pre-execute phase
-  - writes either a minimal or full approved plan.md
-  - drafts through a planner role, then runs independent critic and readiness-checker review
-  - records the aggregated approval result in plan-review.md
-  - verifies execute readiness before approval
-  - freezes an approved plan before execute
-
-execute
-  - reads an approved plan
-  - runs worker-validator execution and checkpointing
-  - advances directly to review-execute when implementation is complete
-
-review-execute
-  - final independent verification against the approved plan
-  - always writes review.md
-  - returns implementation drift to execute only
+Debug this failing test with systematic-debugging.
+Review the changed code with simplify-code.
+Refresh the Dev Kit learning store with compound refresh.
 ```
 
-Quality and debugging skills remain standalone and user-invoked.
+## How Work Starts
 
-## Active Session Hooks
+For new work, `clarify` is the normal entry phase. It either runs a short discovery loop or uses direct clarify when the request is already concrete.
+
+`planning` is still the mandatory pre-execute phase, but it can materialize direct-clarify artifacts itself when all of these are true:
+
+- there is no resumable session
+- the request is already concrete enough to plan
+- a concise `brief.md` can be created immediately
+
+That means "start with `clarify`" is the default rule, while "enter through `planning`" is the documented fast path for already-clear work.
+
+## Core Phases
+
+| Phase | What it does | Main outputs |
+|---|---|---|
+| `clarify` | Locks scope, success criteria, constraints, and technical context. Scores complexity and initializes session state. | `current.json`, `state.json`, `brief.md` |
+| `planning` | Writes an executable plan, runs the internal `planner -> critic + readiness-checker` review bundle, and freezes an approved plan before execution. | `plan.md`, `plan-review.md` |
+| `execute` | Carries out the approved plan through worker-validator loops, checkpointing, and resume-safe state updates. | code changes, `progress.md`, optional `checkpoints/*.json`, optional `handoff.md` |
+| `review-execute` | Runs final independent verification against the approved plan through an isolated reviewer path. | `review.md`, optional `compound.md` |
+
+### `review-execute` Isolation Model
+
+`review-execute` is more than a final checklist. The orchestrator performs session discovery and pre-flight checks, then dispatches an isolated reviewer agent. That reviewer works from `plan.md`, `plan-review.md`, `state.json`, and the codebase, without reading execution logs or worker output.
+
+## Hooks
 
 Dev Kit ships two read-only hooks:
 
 - `SessionStart`
 - `UserPromptSubmit`
 
-Both hooks resolve the workspace root, use the shared session-recovery helper (`.dev-kit/current.json` first, then `.dev-kit/sessions/*/state.json` scan), and print a short summary:
+What they do:
 
-- `session_id`
-- `current_phase`
-- `status`
-- `next_action`
-- `execution_profile`
-- `plan_status`
-- `plan_version`
+- resolve the workspace root
+- discover the preferred session through `.dev-kit/current.json`, then fall back to scanning `.dev-kit/sessions/*/state.json`
+- surface passive context about the active or resumable session
 
-If no resumable session can be selected, the hook prints a one-line warning instead of mutating anything.
+What they do not do:
 
-## Skills
+- start `clarify`, `planning`, `execute`, or `review-execute`
+- change session state
+- pick a new phase automatically
 
-### Core Pipeline
+`SessionStart` adds passive `additionalContext`. Depending on available artifacts, that context can include:
 
-| Skill | Trigger | Description |
-|---|---|---|
-| **clarify** | Any new task entering the Dev Kit flow, especially vague or underspecified requests | Mandatory entry phase. Produces a Context Brief, scores complexity, and initializes `.dev-kit/` session state. Already-clear work may use direct clarify instead of a longer Q&A loop. |
-| **planning** | After clarify completes, or when resuming the mandatory pre-execute planning phase | Mandatory pre-execute phase. Writes either a minimal or full approved `plan.md`, runs a `planner -> critic + readiness-checker` internal review bundle, records the aggregated result in `plan-review.md`, proves execute readiness, and updates the active session state for execution. |
-| **execute** | "run the plan", "execute the plan", "let's start implementing" | Unified execution orchestrator. Executes approved plans only, runs worker-validator loops, writes checkpoint JSON for phased runs, and hands completed work to review-execute. |
-| **review-execute** | "review the work", "verify the implementation", "check if the plan was executed correctly" | Final independent verification of the approved plan. |
+- session summary
+- recent progress
+- handoff resume point
+- compound learnings summary
 
-### Debugging
+`UserPromptSubmit` prints a compact summary line for the active session, for example:
 
-| Skill | Trigger | Description |
-|---|---|---|
-| **systematic-debugging** | Bug, test failure, unexpected behavior | 7-phase workflow: Define -> Reproduce -> Evidence -> Isolate -> Lock -> Fix -> Verify. |
+```text
+Dev Kit: 2026-04-06T16-30-auth-refactor | phase=planning | status=in_progress | next=Run planning. Read .dev-kit/sessions/2026-04-06T16-30-auth-refactor/brief.md. | profile=medium | plan=not_started/v0 | compound=none
+```
 
-### Code Quality
+Seeing that line means the hook found session state. It does not mean a phase started automatically.
 
-| Skill | Trigger | Description |
-|---|---|---|
-| **karpathy** | "implement...", "modify code...", or when you notice yourself about to make changes without reading the existing code first | Surgical implementation discipline: read before write, scope tightly, verify assumptions, define success criteria. |
-| **rob-pike** | "optimize", "slow", "performance", "bottleneck", "speed up", "make faster", "too slow" | Measurement-driven optimization discipline. |
-| **clean-ai-slop** | "clean up", "deslop", "slop", "clean AI code" | Removes common AI-generated code smells in ordered passes. Ignores `.dev-kit/**` workflow metadata. |
-| **simplify-code** | "simplify", "clean up the code", "review the changes" | Parallel diff review for reuse, quality, and efficiency issues. Excludes `.dev-kit/**` workflow metadata from review scope. |
+## How Resume Works
 
-## State Model
+Session recovery is shared by the phase skills and hooks.
 
-### Workspace Root Resolution
+- Preferred pointer: `.dev-kit/current.json`
+- Fallback search: `.dev-kit/sessions/*/state.json`
+- Resumable statuses: `in_progress`, `paused`
+- Non-resumable status: `completed`
+
+If multiple resumable sessions exist and no valid `current.json` resolves the ambiguity, Dev Kit returns a warning and requires an explicit pointer instead of guessing.
+
+## Session Files
+
+All session state lives under `.dev-kit/` at the workspace root.
+
+| Path | Purpose |
+|---|---|
+| `.dev-kit/current.json` | Preferred pointer to the active or resumable session |
+| `.dev-kit/sessions/<session-id>/state.json` | Canonical machine-readable session state |
+| `.dev-kit/sessions/<session-id>/brief.md` | Clarified scope, constraints, success criteria, and complexity |
+| `.dev-kit/sessions/<session-id>/plan.md` | Canonical approved execution plan |
+| `.dev-kit/sessions/<session-id>/plan-review.md` | Aggregated planning verdict from critic and readiness checking |
+| `.dev-kit/sessions/<session-id>/review.md` | Final verification result from `review-execute` |
+| `.dev-kit/sessions/<session-id>/progress.md` | Append-only execution progress log written by the orchestrator |
+| `.dev-kit/sessions/<session-id>/handoff.md` | Resume snapshot used when context reset mode is enabled |
+| `.dev-kit/sessions/<session-id>/checkpoints/*.json` | Phase checkpoints for phased execution |
+| `.dev-kit/sessions/<session-id>/compound.md` | Session-local learning extracted from the work |
+| `.dev-kit/learnings/index.json` | Global learning index |
+| `.dev-kit/learnings/<id>.md` | Reusable learning entries referenced by future sessions |
+
+## State Helper CLI
+
+`scripts/dev_kit_state.py` is the shared contract used by hooks and phase skills.
+
+Common commands:
+
+- `summary`: print the preferred resumable session summary
+- `resolve-workspace-root`: resolve the canonical workspace root for the current invocation
+- `write-json`: safely update `.dev-kit` JSON files
+- `learnings-summary`: print a compact summary of relevant compound learnings
+- `bump-learning`: update reference counters for a learning that was actually used
+- `clear-current`: remove `current.json` only if it still points to the target session
+
+## Workspace Root Resolution
 
 Dev Kit resolves the canonical workspace root in this order:
 
 1. `DEV_KIT_STATE_ROOT`
-2. git top-level
-3. current working directory
+2. the nearest existing `.dev-kit` root
+3. git top-level
+4. current working directory
 
-All state paths stored in JSON are relative to that root.
+All paths stored in JSON must stay relative to that root.
 
-### `.dev-kit/current.json`
+## Supporting Skills
 
-```json
-{
-  "schema_version": 1,
-  "session_id": "2026-04-06T16-30-auth-refactor",
-  "session_path": ".dev-kit/sessions/2026-04-06T16-30-auth-refactor",
-  "updated_at": "2026-04-06T16:45:00+09:00"
-}
-```
+### Workflow Support
 
-### `.dev-kit/sessions/<session-id>/state.json`
+| Skill | Purpose |
+|---|---|
+| `compound` | Extract, refresh, and list reusable learnings in `.dev-kit/learnings/`. Extraction can be done from completed or in-progress work when the user wants to preserve a reusable insight. |
 
-Required fields:
+### Debugging
 
-- `schema_version`
-- `session_id`
-- `title`
-- `feature_slug`
-- `status`
-- `current_phase`
-- `execution_profile`
-- `plan_status`
-- `plan_version`
-- `next_action`
-- `artifacts`
-- `phase_status`
-- `created_at`
-- `updated_at`
+| Skill | Purpose |
+|---|---|
+| `systematic-debugging` | Seven-step debugging workflow: Define -> Reproduce -> Evidence -> Isolate -> Lock -> Fix -> Verify |
 
-Optional field:
+### Code Quality
 
-- `failure_reason`
+| Skill | Purpose |
+|---|---|
+| `karpathy` | Read-before-write implementation discipline |
+| `rob-pike` | Measurement-driven performance discipline |
+| `clean-ai-slop` | Remove common AI-generated code smells |
+| `simplify-code` | Review changed code for reuse, quality, and efficiency issues |
 
-The bundled schema lives at `schema/state.schema.json`.
+## Contributor Reference
 
-### Status Semantics
+Core implementation and reference files:
 
-- `in_progress` — the session is actively inside `clarify`, `planning`, `execute`, or `review-execute`
-- `completed` — final successful state after `review-execute` passes
-- `failed` — execution drift, repeated validator failure, or unrecoverable workflow failure has been recorded
-- `paused` — waiting for an external dependency or user decision; resume is expected after remediation
-
-`failure_reason` should be null unless status is `failed` or `paused`, and must be a non-empty string when those states are used.
-
-If an approved plan still proves impossible to execute, that is treated as a planning contract violation to fix outside the normal state graph.
-
-### Plan Status Semantics
-
-- `not_started` — clarify is complete enough to enter planning, but no draft exists yet
-- `drafting` — planning is actively shaping `plan.md`
-- `in_review` — the `critic` and `readiness-checker` are evaluating the current draft plan
-- `revising` — planning is updating the draft in response to critique or readiness findings
-- `approved` — the plan is frozen and may advance to `execute`
-
-### Phase Status Semantics
-
-- `pending` — the planned phase has not started yet
-- `executing` — the phase is currently running
-- `completed` — the phase finished successfully
-
-### Human-Readable Artifacts
-
-Each session directory may contain:
-
-- `brief.md`
-- `plan.md`
-- `plan-review.md` — aggregated planning approval record, not raw reviewer transcripts
-- `review.md`
-- `progress.md` — append-only execution progress log, not tracked in `state.json`
-- `handoff.md` — consolidated resume snapshot for context reset mode, not tracked in `state.json`
-- `checkpoints/*.json`
-
-Those documents are for humans. `state.json` remains the machine-readable source of truth.
-
-## Key Design Principles
-
-**One Visible Flow** — every task traverses `clarify -> planning -> execute -> review-execute`; complexity changes phase depth, not user-facing routing.
-
-**Planning Owns Plan Quality** — `planning` must draft, critique, readiness-check, revise, and freeze the plan before `execute` begins.
-
-**Planning Closes Execute Readiness** — environment, verification, dependency, and worktree assumptions must be proven in planning, not deferred to execute.
-
-**Planning Uses Internal Role Isolation** — `planner`, `critic`, and `readiness-checker` stay independent; only the orchestrator aggregates their results and writes `.dev-kit` state or artifacts.
-
-**Pure Execute Stage** — `execute` consumes an approved plan and performs implementation plus verification; it does not reopen planning or invent new workflow states.
-
-**Clarify And Planning Always Exist** — already-clear work uses direct clarify, and trivial work uses a minimal approved plan, but execute never starts without both upstream phases being materialized.
-
-**Review-Execute Verifies Results Only** — `review-execute` compares the final codebase against the approved plan and returns implementation drift to execute when needed.
-
-**JSON Source Of Truth** — `state.json` is canonical; Markdown artifacts are human-readable derivatives.
-
-**Shared Session Recovery** — planning, execute, and review-execute all use the same `.dev-kit/current.json` plus session-scan helper instead of a separate `resume` skill.
-
-**Worker-Validator Isolation** — task validators remain isolated from worker output; final review remains isolated from execution context.
-
-**Single Writer State** — only the orchestrator updates session JSON, especially during phased or worktree-based execution.
-
-**Checkpointed Recovery** — phased execution records checkpoint JSON after integration gates pass so interrupted work can restart cleanly without a separate recovery stage.
-
-## Quick Start
-
-```text
-"Clarify this task, create a plan, execute it, and run review-execute on the result."
-"Debug this failing test with systematic root-cause analysis."
-"Review and simplify the changed code for quality issues."
-```
+- [skills/clarify/SKILL.md](./skills/clarify/SKILL.md)
+- [skills/planning/SKILL.md](./skills/planning/SKILL.md)
+- [skills/execute/SKILL.md](./skills/execute/SKILL.md)
+- [skills/review-execute/SKILL.md](./skills/review-execute/SKILL.md)
+- [skills/compound/SKILL.md](./skills/compound/SKILL.md)
+- [scripts/dev_kit_state.py](./scripts/dev_kit_state.py)
+- [hooks/hooks.json](./hooks/hooks.json)
+- [schema/state.schema.json](./schema/state.schema.json)
+- [schema/learnings-index.schema.json](./schema/learnings-index.schema.json)
+- [tests/test_dev_kit_state.py](./tests/test_dev_kit_state.py)
 
 ## Project Structure
 
 ```text
 dev-kit/
-├── .claude-plugin/plugin.json
-├── .codex-plugin/plugin.json
+├── .claude-plugin/
+├── .codex-plugin/
 ├── .mcp.json
 ├── .app.json
-├── hooks/
-│   ├── hooks.json
-│   ├── session-start.sh
-│   └── user-prompt-submit.sh
-├── schema/
-│   └── state.schema.json
-├── scripts/
-│   └── dev_kit_state.py
-├── tests/
-│   └── test_dev_kit_state.py
-├── README.md
-├── README.ko.md
 ├── assets/
-│   ├── icon.png
-│   └── logo.png
-└── skills/
-    ├── clarify/SKILL.md
-    ├── planning/SKILL.md
-    ├── execute/SKILL.md
-    ├── review-execute/SKILL.md
-    ├── systematic-debugging/
-    ├── karpathy/SKILL.md
-    ├── rob-pike/SKILL.md
-    ├── clean-ai-slop/SKILL.md
-    └── simplify-code/SKILL.md
+├── hooks/
+├── schema/
+├── scripts/
+├── skills/
+├── tests/
+├── README.md
+└── README.ko.md
 ```
 
 ## License

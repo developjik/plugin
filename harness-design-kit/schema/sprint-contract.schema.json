@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Sprint Contract",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Objective",
+    "Deliverables",
+    "Out Of Scope",
+    "Acceptance Tests",
+    "Verification Steps",
+    "Evidence Requirements",
+    "Exit Criteria",
+    "Contract Status"
+  ]
+}

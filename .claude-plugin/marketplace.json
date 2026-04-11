@@ -31,6 +31,27 @@
       "category": "Productivity"
     },
     {
+      "name": "harness-design-kit",
+      "source": "./harness-design-kit",
+      "description": "Planner-generator-evaluator harness plugin for long-running application development and frontend iteration",
+      "version": "0.1.0",
+      "author": {
+        "name": "developjik",
+        "email": "developjik@users.noreply.github.com",
+        "url": "https://github.com/developjik"
+      },
+      "license": "MIT",
+      "keywords": [
+        "harness",
+        "agents",
+        "planner",
+        "evaluator",
+        "frontend",
+        "long-running"
+      ],
+      "category": "Developer Tools"
+    },
+    {
       "name": "skeleton-plugin",
       "source": "./skeleton-plugin",
       "description": "Starter plugin template for building Claude Code & Codex plugins",
@@ -46,6 +67,26 @@
         "starter",
         "skeleton",
         "plugin-development"
+      ],
+      "category": "Developer Tools"
+    },
+    {
+      "name": "managed-agent-kit",
+      "source": "./managed-agent-kit",
+      "description": "Draft long-horizon orchestration plugin inspired by Anthropic Managed Agents",
+      "version": "0.1.0",
+      "author": {
+        "name": "developjik",
+        "email": "developjik@users.noreply.github.com",
+        "url": "https://github.com/developjik"
+      },
+      "license": "MIT",
+      "keywords": [
+        "agents",
+        "managed-agents",
+        "orchestration",
+        "workflow",
+        "long-running"
       ],
       "category": "Developer Tools"
     }

@@ -16,6 +16,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "dev_kit_state.py"
 SESSION_START_HOOK = PLUGIN_ROOT / "hooks" / "session-start.sh"
 USER_PROMPT_SUBMIT_HOOK = PLUGIN_ROOT / "hooks" / "user-prompt-submit.sh"
+HOOKS_CONFIG = PLUGIN_ROOT / "hooks" / "hooks.json"
 SPEC = importlib.util.spec_from_file_location("dev_kit_state", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 dev_kit_state = importlib.util.module_from_spec(SPEC)
@@ -35,6 +36,8 @@ def workflow_state(
     plan: str | None = None,
     plan_review: str | None = None,
     review: str | None = None,
+    compound: str | None = None,
+    compound_status: str | None = None,
     phase_status: dict[str, str] | None = None,
     updated_at: str = "2026-04-06T16:45:00+09:00",
 ) -> dict[str, object]:
@@ -54,7 +57,9 @@ def workflow_state(
             "plan": plan,
             "plan_review": plan_review,
             "review": review,
+            "compound": compound,
         },
+        "compound_status": compound_status,
         "phase_status": phase_status or {},
         "created_at": "2026-04-06T16:30:00+09:00",
         "updated_at": updated_at,
@@ -82,7 +87,7 @@ def approved_plan_state(
         plan=f".dev-kit/sessions/{session_id}/plan.md",
         plan_review=f".dev-kit/sessions/{session_id}/plan-review.md",
         review=review,
-        phase_status=phase_status or {"P1": "pending"},
+        phase_status={"P1": "pending"} if phase_status is None else phase_status,
     )
 
 
@@ -150,6 +155,20 @@ class DevKitStateTests(unittest.TestCase):
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
             nested = root / "nested"
             nested.mkdir()
+            with mock.patch.dict("os.environ", {}, clear=False):
+                resolved = dev_kit_state.resolve_workspace_root(nested)
+            self.assertEqual(resolved, root.resolve())
+
+    def test_resolve_workspace_root_prefers_nearest_dev_kit_root_over_git(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
+            nested = root / "packages" / "app"
+            nested.mkdir(parents=True, exist_ok=True)
+            current_path = root / ".dev-kit" / "current.json"
+            current_path.parent.mkdir(parents=True, exist_ok=True)
+            current_path.write_text("{}", encoding="utf-8")
+
             with mock.patch.dict("os.environ", {}, clear=False):
                 resolved = dev_kit_state.resolve_workspace_root(nested)
             self.assertEqual(resolved, root.resolve())
@@ -669,6 +688,83 @@ class DevKitStateTests(unittest.TestCase):
             dev_kit_state.write_json_atomically(payload, path)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), payload)
 
+    def test_command_write_json_writes_inside_dev_kit(self) -> None:
+        payload = {"schema_version": 1, "status": "in_progress"}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            args = argparse.Namespace(
+                workspace_root=str(root),
+                path=".dev-kit/sessions/example/state.json",
+            )
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))):
+                exit_code = dev_kit_state.command_write_json(args)
+            self.assertEqual(exit_code, 0)
+            written = root / ".dev-kit" / "sessions" / "example" / "state.json"
+            self.assertEqual(json.loads(written.read_text(encoding="utf-8")), payload)
+
+    def test_command_write_json_rejects_absolute_path(self) -> None:
+        payload = {"schema_version": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            args = argparse.Namespace(
+                workspace_root=str(root),
+                path=str(root / ".dev-kit" / "state.json"),
+            )
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    exit_code = dev_kit_state.command_write_json(args)
+            self.assertEqual(exit_code, 1)
+            self.assertIn("write-json path must be relative to the workspace root", stdout.getvalue())
+
+    def test_command_write_json_rejects_workspace_escape(self) -> None:
+        payload = {"schema_version": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            args = argparse.Namespace(workspace_root=str(root), path="../outside.json")
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    exit_code = dev_kit_state.command_write_json(args)
+            self.assertEqual(exit_code, 1)
+            self.assertIn("write-json path must stay within the workspace root", stdout.getvalue())
+
+    def test_command_write_json_rejects_non_dev_kit_path(self) -> None:
+        payload = {"schema_version": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            args = argparse.Namespace(workspace_root=str(root), path="notes/state.json")
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    exit_code = dev_kit_state.command_write_json(args)
+            self.assertEqual(exit_code, 1)
+            self.assertIn("write-json path must stay within .dev-kit", stdout.getvalue())
+
+    def test_command_resolve_workspace_root_accepts_cwd_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            nested = root / "packages" / "app"
+            nested.mkdir(parents=True, exist_ok=True)
+            args = argparse.Namespace(cwd=str(nested))
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                exit_code = dev_kit_state.command_resolve_workspace_root(args)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stdout.getvalue().strip(), str((root / "packages" / "app").resolve()))
+
+    def test_command_resolve_workspace_root_accepts_stdin_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            nested = root / "packages" / "app"
+            nested.mkdir(parents=True, exist_ok=True)
+            current_path = root / ".dev-kit" / "current.json"
+            current_path.parent.mkdir(parents=True, exist_ok=True)
+            current_path.write_text("{}", encoding="utf-8")
+            args = argparse.Namespace(cwd=None)
+            payload = {"cwd": str(nested)}
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    exit_code = dev_kit_state.command_resolve_workspace_root(args)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stdout.getvalue().strip(), str(root.resolve()))
+
     def test_clear_current_pointer_if_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -682,6 +778,38 @@ class DevKitStateTests(unittest.TestCase):
             self.assertTrue(dev_kit_state.clear_current_pointer_if_matches(root, "session-1"))
             self.assertFalse((root / ".dev-kit" / "current.json").exists())
             self.assertFalse(dev_kit_state.clear_current_pointer_if_matches(root, "session-1"))
+
+    def test_clear_current_pointer_if_matches_rechecks_inside_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            current_path = root / ".dev-kit" / "current.json"
+            dev_kit_state.write_current_pointer_atomically(
+                root,
+                session_id="session-1",
+                session_path=".dev-kit/sessions/session-1",
+                updated_at="2026-04-06T16:45:00+09:00",
+            )
+
+            payloads = iter(
+                [
+                    {
+                        "schema_version": 1,
+                        "session_id": "session-1",
+                        "session_path": ".dev-kit/sessions/session-1",
+                        "updated_at": "2026-04-06T16:45:00+09:00",
+                    },
+                    {
+                        "schema_version": 1,
+                        "session_id": "session-2",
+                        "session_path": ".dev-kit/sessions/session-2",
+                        "updated_at": "2026-04-06T16:46:00+09:00",
+                    },
+                ]
+            )
+
+            with mock.patch.object(dev_kit_state, "load_json", side_effect=lambda _: next(payloads)):
+                self.assertFalse(dev_kit_state.clear_current_pointer_if_matches(root, "session-1"))
+            self.assertTrue(current_path.exists())
 
     def test_session_start_hook_finds_dev_kit_root_from_nested_non_git_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -818,6 +946,34 @@ class DevKitStateTests(unittest.TestCase):
             self.assertIn("plan=approved/v1", result.stdout)
             self.assertNotIn("Recent Progress:", result.stdout)
 
+    def test_session_start_hook_returns_passive_context_without_workflow_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            nested = root / "packages" / "app"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            result = run_hook(
+                SESSION_START_HOOK,
+                nested,
+                {
+                    "session_id": "abc123",
+                    "transcript_path": "/tmp/transcript.jsonl",
+                    "cwd": str(nested),
+                    "hook_event_name": "SessionStart",
+                    "source": "clear",
+                },
+            )
+
+            payload = json.loads(result.stdout)
+            additional_context = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("## No Active Session", additional_context)
+            self.assertIn("No active Dev Kit session found in this workspace.", additional_context)
+            self.assertNotIn("<EXTREMELY_IMPORTANT>", additional_context)
+            self.assertNotIn("You have Dev Kit.", additional_context)
+            self.assertNotIn("dev-kit:using-dev-kit", additional_context)
+            self.assertNotIn("mandatory operating guidance", additional_context)
+            self.assertNotIn("invoke the `clarify` skill", additional_context)
+
     def test_session_start_hook_shows_handoff_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -878,8 +1034,336 @@ class DevKitStateTests(unittest.TestCase):
             self.assertIn("2026-04-06T16-30-example", result.stdout)
             self.assertNotIn("Handoff Resume Point:", result.stdout)
 
+    def test_hooks_manifest_reinjects_on_clear_and_compact(self) -> None:
+        payload = json.loads(HOOKS_CONFIG.read_text(encoding="utf-8"))
+        matcher = payload["hooks"]["SessionStart"][0]["matcher"]
+        self.assertEqual(matcher, "startup|resume|clear|compact")
+
     def test_validate_schema_accepts_bundled_schema(self) -> None:
         self.assertEqual(dev_kit_state.validate_state_schema(self.schema), [])
+
+    def test_render_summary_includes_compound_status(self) -> None:
+        payload = approved_plan_state()
+        payload["compound_status"] = "extracted"
+        summary = dev_kit_state.render_summary(payload)
+        self.assertIn("compound=extracted", summary)
+
+    def test_render_summary_shows_none_when_compound_status_absent(self) -> None:
+        summary = dev_kit_state.render_summary(approved_plan_state())
+        self.assertIn("compound=none", summary)
+
+    def test_validate_state_payload_accepts_compound_status_extracted(self) -> None:
+        session_id = "2026-04-06T16-30-example"
+        payload = approved_plan_state(
+            status="completed",
+            current_phase="review-execute",
+            next_action="Session complete.",
+            review=f".dev-kit/sessions/{session_id}/review.md",
+            phase_status={"P1": "completed"},
+        )
+        payload["compound_status"] = "extracted"
+        payload["artifacts"]["compound"] = f".dev-kit/sessions/{session_id}/compound.md"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            session_dir, _ = write_session(root, payload)
+            errors = dev_kit_state.validate_state_payload(
+                payload, self.schema, root, session_path=session_dir,
+            )
+        self.assertEqual(errors, [])
+
+    def test_validate_state_payload_accepts_compound_status_skipped(self) -> None:
+        payload = approved_plan_state()
+        payload["compound_status"] = "skipped"
+        errors = dev_kit_state.validate_state_payload(payload, self.schema)
+        self.assertEqual(errors, [])
+
+    def test_validate_state_payload_accepts_compound_status_null(self) -> None:
+        payload = approved_plan_state()
+        payload["compound_status"] = None
+        errors = dev_kit_state.validate_state_payload(payload, self.schema)
+        self.assertEqual(errors, [])
+
+    def test_validate_state_payload_rejects_invalid_compound_status(self) -> None:
+        payload = approved_plan_state()
+        payload["compound_status"] = "corrupted"
+        errors = dev_kit_state.validate_state_payload(payload, self.schema)
+        self.assertIn(
+            "state.json compound_status must be not_started, extracted, skipped, or null",
+            errors,
+        )
+
+    def test_validate_state_payload_requires_compound_artifact_when_extracted(self) -> None:
+        session_id = "2026-04-06T16-30-example"
+        payload = approved_plan_state(
+            session_id,
+            status="completed",
+            current_phase="review-execute",
+            next_action="Session complete.",
+            review=f".dev-kit/sessions/{session_id}/review.md",
+            phase_status={"P1": "completed"},
+        )
+        payload["compound_status"] = "extracted"
+        payload["artifacts"]["compound"] = None
+        errors = dev_kit_state.validate_state_payload(payload, self.schema)
+        self.assertIn(
+            "state.json artifacts.compound is required when compound_status is extracted",
+            errors,
+        )
+
+
+class LearningsTests(unittest.TestCase):
+    def test_load_learnings_index_returns_empty_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            index = dev_kit_state.load_learnings_index(Path(tmpdir))
+            self.assertEqual(index["schema_version"], 1)
+            self.assertEqual(index["learnings"], [])
+
+    def test_add_learning_creates_file_and_updates_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="test-pattern",
+                title="Test Pattern",
+                source_session="2026-04-08T14-30-test",
+                tags=["testing", "patterns"],
+                context_types=["nodejs"],
+                content="# test-pattern\n\n## Situation\nTest situation.",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+
+            # Verify .md file exists
+            md_path = root / ".dev-kit" / "learnings" / "test-pattern.md"
+            self.assertTrue(md_path.exists())
+            self.assertIn("test-pattern", md_path.read_text())
+
+            # Verify index.json was updated
+            index = dev_kit_state.load_learnings_index(root)
+            self.assertEqual(len(index["learnings"]), 1)
+            self.assertEqual(index["learnings"][0]["id"], "test-pattern")
+            self.assertEqual(index["learnings"][0]["status"], "active")
+            self.assertEqual(index["learnings"][0]["reference_count"], 0)
+
+    def test_add_learning_rejects_invalid_learning_ids(self) -> None:
+        invalid_ids = ["", "../escape", "nested/path", "/abs", "bad.md", ".", ".."]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for learning_id in invalid_ids:
+                with self.subTest(learning_id=learning_id):
+                    with self.assertRaises(ValueError):
+                        dev_kit_state.add_learning(
+                            root,
+                            learning_id=learning_id,
+                            title="Invalid",
+                            source_session="sess",
+                            tags=["a"],
+                            context_types=["b"],
+                            content="# invalid",
+                            created_at="2026-04-08T16:00:00+09:00",
+                        )
+
+    def test_add_learning_replaces_existing_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for title in ("v1", "v2"):
+                dev_kit_state.add_learning(
+                    root,
+                    learning_id="dupe-id",
+                    title=title,
+                    source_session="sess",
+                    tags=["a"],
+                    context_types=["b"],
+                    content=f"# {title}",
+                    created_at="2026-04-08T16:00:00+09:00",
+                )
+            index = dev_kit_state.load_learnings_index(root)
+            self.assertEqual(len(index["learnings"]), 1)
+            self.assertEqual(index["learnings"][0]["title"], "v2")
+
+    def test_add_learning_preserves_existing_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="dupe-id",
+                title="v1",
+                source_session="sess",
+                tags=["a"],
+                context_types=["b"],
+                content="# v1",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            self.assertTrue(
+                dev_kit_state.bump_learning_reference(
+                    root, "dupe-id", "2026-04-10T09:30:00+09:00"
+                )
+            )
+            self.assertTrue(dev_kit_state.archive_learning(root, "dupe-id"))
+
+            dev_kit_state.add_learning(
+                root,
+                learning_id="dupe-id",
+                title="v2",
+                source_session="sess",
+                tags=["c"],
+                context_types=["d"],
+                content="# v2",
+                created_at="2026-04-08T16:05:00+09:00",
+            )
+
+            index = dev_kit_state.load_learnings_index(root)
+            self.assertEqual(len(index["learnings"]), 1)
+            entry = index["learnings"][0]
+            self.assertEqual(entry["title"], "v2")
+            self.assertEqual(entry["reference_count"], 1)
+            self.assertEqual(entry["last_referenced_at"], "2026-04-10T09:30:00+09:00")
+            self.assertEqual(entry["status"], "archived")
+
+    def test_archive_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="to-archive",
+                title="Archive Me",
+                source_session="sess",
+                tags=["a"],
+                context_types=["b"],
+                content="# to-archive",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            result = dev_kit_state.archive_learning(root, "to-archive")
+            self.assertTrue(result)
+
+            index = dev_kit_state.load_learnings_index(root)
+            self.assertEqual(index["learnings"][0]["status"], "archived")
+
+    def test_archive_learning_returns_false_for_unknown_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = dev_kit_state.archive_learning(Path(tmpdir), "nonexistent")
+            self.assertFalse(result)
+
+    def test_bump_learning_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="bumped",
+                title="Bump Me",
+                source_session="sess",
+                tags=["a"],
+                context_types=["b"],
+                content="# bumped",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            result = dev_kit_state.bump_learning_reference(
+                root, "bumped", "2026-04-10T09:30:00+09:00"
+            )
+            self.assertTrue(result)
+
+            index = dev_kit_state.load_learnings_index(root)
+            entry = index["learnings"][0]
+            self.assertEqual(entry["reference_count"], 1)
+            self.assertEqual(entry["last_referenced_at"], "2026-04-10T09:30:00+09:00")
+
+    def test_find_relevant_learnings_by_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for lid, tags in [("a", ["async", "typescript"]), ("b", ["database", "sql"]), ("c", ["async", "nodejs"])]:
+                dev_kit_state.add_learning(
+                    root,
+                    learning_id=lid,
+                    title=f"Learning {lid}",
+                    source_session="sess",
+                    tags=tags,
+                    context_types=[],
+                    content=f"# {lid}",
+                    created_at="2026-04-08T16:00:00+09:00",
+                )
+            results = dev_kit_state.find_relevant_learnings(root, tags=["async"])
+            ids = [r["id"] for r in results]
+            self.assertIn("a", ids)
+            self.assertIn("c", ids)
+            self.assertNotIn("b", ids)
+
+    def test_find_relevant_learnings_returns_top_referenced_when_no_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="popular",
+                title="Popular",
+                source_session="sess",
+                tags=["a"],
+                context_types=[],
+                content="# popular",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            for _ in range(3):
+                dev_kit_state.bump_learning_reference(root, "popular", "2026-04-10T09:30:00+09:00")
+
+            results = dev_kit_state.find_relevant_learnings(root, max_results=5)
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["reference_count"], 3)
+
+    def test_render_learnings_summary_empty_when_no_learnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = dev_kit_state.render_learnings_summary(Path(tmpdir))
+            self.assertEqual(summary, "")
+
+    def test_render_learnings_summary_shows_active_learnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="test-learn",
+                title="Test Learning",
+                source_session="sess",
+                tags=["async", "error"],
+                context_types=["nodejs"],
+                content="# test-learn",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            summary = dev_kit_state.render_learnings_summary(root)
+            self.assertIn("Compound Learnings (1 active):", summary)
+            self.assertIn("[test-learn]", summary)
+            self.assertIn("Test Learning", summary)
+
+    def test_render_learnings_summary_excludes_archived(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="archived-one",
+                title="Archived",
+                source_session="sess",
+                tags=["a"],
+                context_types=[],
+                content="# archived",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            dev_kit_state.archive_learning(root, "archived-one")
+            summary = dev_kit_state.render_learnings_summary(root)
+            self.assertEqual(summary, "")
+
+    def test_command_learnings_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dev_kit_state.add_learning(
+                root,
+                learning_id="cmd-test",
+                title="CLI Test",
+                source_session="sess",
+                tags=["cli"],
+                context_types=[],
+                content="# cmd-test",
+                created_at="2026-04-08T16:00:00+09:00",
+            )
+            args = argparse.Namespace(workspace_root=str(root), max_results=5)
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                exit_code = dev_kit_state.command_learnings_summary(args)
+            self.assertEqual(exit_code, 0)
+            self.assertIn("[cmd-test]", stdout.getvalue())
 
 
 if __name__ == "__main__":

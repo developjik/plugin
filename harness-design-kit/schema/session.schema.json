@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Session",
+  "type": "object",
+  "required": [
+    "session_id",
+    "session_path",
+    "created_at",
+    "updated_at",
+    "status",
+    "phase",
+    "goal",
+    "mode",
+    "architecture_profile",
+    "execution_mode",
+    "evaluator_mode",
+    "contract_status",
+    "current_round",
+    "current_candidate_id",
+    "best_candidate_id",
+    "parent_session_id",
+    "resumed_from_handoff",
+    "active_strategy",
+    "last_reset_reason",
+    "last_evaluator_run",
+    "last_evaluation_verdict",
+    "last_evaluation_scores",
+    "last_evaluation_weighted_average",
+    "last_evaluation_weighted_threshold",
+    "last_evaluation_priority_criteria",
+    "last_evaluation_decision_basis",
+    "last_evaluation_threshold_misses",
+    "last_evaluation_artifacts",
+    "last_evaluation_recommendation",
+    "needs_evaluation",
+    "final_pass_requested",
+    "last_live_eval_artifact",
+    "qa_target_url",
+    "qa_flow_path",
+    "context_strategy",
+    "last_compaction_reason",
+    "last_compaction_at",
+    "last_compaction_artifact",
+    "compaction_count",
+    "compaction_resume_count",
+    "last_compaction_actor",
+    "last_compaction_model",
+    "last_runner_provider",
+    "last_runner_model",
+    "consecutive_runner_failures",
+    "compaction_cycle_failures",
+    "compact_source_artifacts",
+    "last_contract_review_artifact",
+    "last_contract_review_decision",
+    "last_contract_review_findings",
+    "candidate_sequence",
+    "round_budget",
+    "candidates",
+    "artifacts"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "session_path": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "paused",
+        "completed"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "clarify",
+        "plan",
+        "contract",
+        "build",
+        "evaluate",
+        "handoff",
+        "completed"
+      ]
+    },
+    "goal": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "app",
+        "frontend"
+      ]
+    },
+    "architecture_profile": {
+      "type": "string",
+      "enum": [
+        "sprint",
+        "continuous"
+      ]
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "reset",
+        "auto"
+      ]
+    },
+    "evaluator_mode": {
+      "type": "string",
+      "enum": [
+        "always",
+        "final-pass",
+        "edge-only",
+        "off"
+      ]
+    },
+    "contract_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "draft",
+        "proposed",
+        "approved",
+        "rejected",
+        "waived"
+      ]
+    },
+    "current_round": {
+      "type": "integer"
+    },
+    "current_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "best_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resumed_from_handoff": {
+      "type": "boolean"
+    },
+    "active_strategy": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "refine",
+        "pivot",
+        "accept"
+      ]
+    },
+    "last_reset_reason": {
+      "type": "string"
+    },
+    "last_evaluator_run": {
+      "type": "string"
+    },
+    "last_evaluation_verdict": {
+      "type": "string",
+      "enum": [
+        "",
+        "pass",
+        "fail",
+        "revise",
+        "pivot"
+      ]
+    },
+    "last_evaluation_scores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "score",
+          "threshold",
+          "weight",
+          "passed"
+        ],
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "weight": {
+            "type": "number"
+          },
+          "passed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "last_evaluation_weighted_average": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "last_evaluation_weighted_threshold": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "last_evaluation_priority_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_evaluation_decision_basis": {
+      "type": "string"
+    },
+    "last_evaluation_threshold_misses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_evaluation_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_evaluation_recommendation": {
+      "type": "string",
+      "enum": [
+        "",
+        "accept",
+        "refine",
+        "pivot",
+        "fail"
+      ]
+    },
+    "needs_evaluation": {
+      "type": "boolean"
+    },
+    "final_pass_requested": {
+      "type": "boolean"
+    },
+    "last_live_eval_artifact": {
+      "type": "string"
+    },
+    "qa_target_url": {
+      "type": "string"
+    },
+    "qa_flow_path": {
+      "type": "string"
+    },
+    "context_strategy": {
+      "type": "string",
+      "enum": [
+        "full",
+        "compact"
+      ]
+    },
+    "last_compaction_reason": {
+      "type": "string"
+    },
+    "last_compaction_at": {
+      "type": "string"
+    },
+    "last_compaction_artifact": {
+      "type": "string"
+    },
+    "compaction_count": {
+      "type": "integer"
+    },
+    "compaction_resume_count": {
+      "type": "integer"
+    },
+    "last_compaction_actor": {
+      "type": "string"
+    },
+    "last_compaction_model": {
+      "type": "string"
+    },
+    "last_runner_provider": {
+      "type": "string"
+    },
+    "last_runner_model": {
+      "type": "string"
+    },
+    "consecutive_runner_failures": {
+      "type": "integer"
+    },
+    "compaction_cycle_failures": {
+      "type": "integer"
+    },
+    "compact_source_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_contract_review_artifact": {
+      "type": "string"
+    },
+    "last_contract_review_decision": {
+      "type": "string",
+      "enum": [
+        "",
+        "approve",
+        "reject"
+      ]
+    },
+    "last_contract_review_findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "candidate_sequence": {
+      "type": "integer"
+    },
+    "round_budget": {
+      "type": "integer"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "parent_candidate_id",
+          "round_started",
+          "strategy",
+          "status",
+          "last_verdict",
+          "last_recommendation",
+          "last_weighted_average"
+        ],
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "parent_candidate_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "round_started": {
+            "type": "integer"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "initial",
+              "idle",
+              "refine",
+              "pivot",
+              "accept"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "accepted",
+              "superseded"
+            ]
+          },
+          "last_verdict": {
+            "type": "string",
+            "enum": [
+              "",
+              "pass",
+              "fail",
+              "revise",
+              "pivot"
+            ]
+          },
+          "last_recommendation": {
+            "type": "string",
+            "enum": [
+              "",
+              "accept",
+              "refine",
+              "pivot",
+              "fail"
+            ]
+          },
+          "last_weighted_average": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "events",
+        "product_spec",
+        "design_brief",
+        "sprint_contract",
+        "evaluation",
+        "progress",
+        "compact_state",
+        "handoff"
+      ],
+      "properties": {
+        "events": {
+          "type": "string"
+        },
+        "product_spec": {
+          "type": "string"
+        },
+        "design_brief": {
+          "type": "string"
+        },
+        "sprint_contract": {
+          "type": "string"
+        },
+        "evaluation": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "string"
+        },
+        "compact_state": {
+          "type": "string"
+        },
+        "handoff": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

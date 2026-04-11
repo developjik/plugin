@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Product Spec",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Problem And Target User",
+    "Product Goals",
+    "Non-Goals",
+    "Design Direction",
+    "AI Opportunities",
+    "Sprint Candidates",
+    "Verification Risks"
+  ]
+}
