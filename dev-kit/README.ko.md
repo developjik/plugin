@@ -2,263 +2,267 @@
 
 [English](./README.md) | 한국어
 
-Claude Code와 Codex를 위한 구조화된 개발 워크플로우 플러그인입니다.
+Dev Kit은 Claude Code와 Codex를 위한 구조화된 개발 워크플로우 플러그인입니다. 일반 구현 작업에 하나의 공식 흐름을 적용하고, 세션 상태를 `.dev-kit/` 아래에 남기며, 디버깅과 코드 품질 검토는 별도의 명시적 스킬로 유지합니다.
 
-## 개요
+## 언제 쓰는가
 
-Dev Kit은 하나의 공식 개발 흐름만 제공합니다.
+다음처럼 추적 가능한 구현 워크플로우가 필요할 때 메인 Dev Kit 흐름을 사용합니다.
+
+- 기능 개발이나 리팩터링을 `brief.md`, `plan.md`, `review.md` 같은 산출물과 함께 관리하고 싶을 때
+- `.dev-kit/current.json` 또는 재개 가능한 세션을 기준으로 작업을 이어가고 싶을 때
+- 계획, 실행, 최종 검증을 명시적으로 분리하고 싶을 때
+
+다음처럼 일반적인 기능 구현이 아닌 작업은 독립 스킬을 사용합니다.
+
+- 버그, 플래키 테스트, 예상 밖 동작은 `systematic-debugging`
+- 변경 후 정리와 품질 검토는 `simplify-code` 또는 `clean-ai-slop`
+- 성능 작업은 `rob-pike`
+- `.dev-kit/learnings/` 지식 저장소 관리는 `compound`
+
+## 설치
+
+이 README만 직접 열었다면 먼저 플러그인을 설치해야 합니다.
+
+- Codex: [../docs/guides/install/codex-local-plugin-install.ko.md](../docs/guides/install/codex-local-plugin-install.ko.md)
+- Claude Code: [../docs/guides/install/claude-code-local-plugin-install.ko.md](../docs/guides/install/claude-code-local-plugin-install.ko.md)
+
+## 워크플로우 한눈에 보기
+
+Dev Kit의 공식 구현 흐름은 다음과 같습니다.
 
 `clarify -> planning -> execute -> review-execute`
 
-모든 작업은 이 네 phase를 모두 거칩니다. 복잡도는 여전히 중요하지만, 이제는 사용자에게 보이는 라우팅이 아니라 각 phase의 깊이만 바꿉니다. 요청이 이미 충분히 명확하면 `clarify`는 direct mode로 짧게 끝날 수 있고, trivial work라면 `planning`은 minimal approved plan만 freeze할 수 있지만, 두 phase 자체를 생략하지는 않습니다. 내부적으로 `planning`은 `planner`, `critic`, `readiness-checker`를 사용하지만 사용자에게는 여전히 하나의 phase로 보입니다. 그 뒤 `execute`는 순수 실행 단계로 동작하고, `review-execute`는 승인된 plan 기준으로 최종 결과를 검증합니다.
+이 흐름이 보장하는 것은 다음과 같습니다.
 
-세션 복구는 공용 상태 헬퍼를 통해 각 phase skill 안에 통합되어 있습니다. 더 이상 별도의 visible skill이 아닙니다.
-재개 대상은 `in_progress`와 `paused`입니다. `completed`는 복구 후보에서 제외됩니다.
+- 일반 실행을 시작하기 전에 `clarify`와 `planning` 산출물이 준비됩니다.
+- 훅은 읽기 전용이며 단계를 자동 시작하거나 자동 재개하지 않습니다.
+- `planning`이 계획 품질과 실행 준비 상태를 책임집니다.
+- `execute`는 승인된 계획을 따르며, 실행 중에 새 계획을 다시 만들지 않습니다.
+- `review-execute`는 실행 컨텍스트와 분리된 상태에서 최종 검증을 수행합니다.
 
-플러그인은 워크스페이스 루트의 `.dev-kit/` 아래에 상태를 저장합니다.
+## 빠른 시작
 
-- `.dev-kit/current.json`은 재개 가능한 세션이 있을 때 우선 포인터 역할을 합니다.
-- `.dev-kit/sessions/<session-id>/state.json`은 machine-readable source of truth입니다.
-- `brief.md`, `plan.md`, `plan-review.md`, `review.md`는 사람이 읽는 문서로 같은 세션 디렉터리에 저장됩니다.
-- `checkpoints/`는 phase 실행 중 생성되는 checkpoint JSON을 저장합니다.
+### 일반 기능 작업
 
-이 저장 방식은 호환성이 깨지는 변경입니다. 기존 Markdown 기반 세션 레이아웃은 더 이상 사용하지 않으며, 자동 마이그레이션도 하지 않습니다.
+1. 워크플로우를 명시적으로 시작합니다.
 
-## 워크플로우
+   ```text
+   이 작업에 Dev Kit을 사용해줘. 주문 페이지에 CSV 내보내기를 추가하는 작업을 clarify부터 시작해줘.
+   ```
+
+2. `clarify` 이후에는 다음 파일이 생깁니다.
+   - `.dev-kit/current.json`
+   - `.dev-kit/sessions/<session-id>/state.json`
+   - `.dev-kit/sessions/<session-id>/brief.md`
+
+3. 다음 단계로 계획을 진행합니다.
+
+   ```text
+   현재 활성 Dev Kit 세션에 대해 planning을 실행해줘.
+   ```
+
+4. `planning` 이후에는 다음 파일을 기대할 수 있습니다.
+   - `.dev-kit/sessions/<session-id>/plan.md`
+   - `.dev-kit/sessions/<session-id>/plan-review.md`
+
+5. 승인된 계획을 실행합니다.
+
+   ```text
+   승인된 Dev Kit 계획을 execute해줘.
+   ```
+
+6. `execute` 이후에는 코드 변경과 함께 다음 실행 산출물이 추가될 수 있습니다.
+   - `.dev-kit/sessions/<session-id>/progress.md`
+   - 단계 분할 실행일 때 `.dev-kit/sessions/<session-id>/checkpoints/*.json`
+   - 컨텍스트 리셋 모드를 쓸 때 `.dev-kit/sessions/<session-id>/handoff.md`
+
+7. 마지막으로 최종 검증을 실행합니다.
+
+   ```text
+   현재 활성 Dev Kit 세션에 대해 review-execute를 실행해줘.
+   ```
+
+8. `review-execute` 이후에는 다음 파일을 기대할 수 있습니다.
+   - `.dev-kit/sessions/<session-id>/review.md`
+   - 재사용 가능한 학습을 추출한 경우 `.dev-kit/sessions/<session-id>/compound.md`
+
+### 독립 진입점
 
 ```text
-clarify -> planning -> execute -> review-execute
-
-clarify
-  - 모든 새 작업의 필수 진입 phase다
-  - 모호함을 줄이거나 모호함이 거의 없음을 확인한다
-  - 요청 명확도에 따라 interactive mode 또는 direct mode로 동작한다
-  - brief.md를 작성한다
-  - state.json과 current.json을 초기화한다
-  - 다음 visible step을 planning으로 남긴다
-
-planning
-  - execute 직전의 필수 phase다
-  - minimal plan 또는 full approved plan.md를 작성한다
-  - planner 초안 작성 뒤 critic와 readiness-checker의 독립 검토를 수행한다
-  - 집계된 승인 결과를 plan-review.md에 기록한다
-  - 승인 전에 execute readiness를 검증한다
-  - 승인된 plan을 freeze한 뒤 execute로 넘긴다
-
-execute
-  - 승인된 plan을 읽는다
-  - worker-validator 실행과 checkpointing을 수행한다
-  - 구현이 끝나면 바로 review-execute로 진행한다
-
-review-execute
-  - 승인된 plan 기준으로 최종 독립 검증을 수행한다
-  - 항상 review.md를 작성한다
-  - implementation drift만 execute로 되돌린다
+이 실패하는 테스트를 systematic-debugging으로 디버깅해줘.
+변경된 코드를 simplify-code로 검토해줘.
+Dev Kit 학습 저장소를 compound refresh로 정리해줘.
 ```
 
-품질 및 디버깅 스킬은 독립적으로 유지되며, 사용자가 명시적으로 호출하는 방식입니다.
+## 작업은 어떻게 시작되는가
 
-## Active Session Hooks
+새 작업의 기본 진입점은 `clarify`입니다. 요청이 모호하면 짧은 탐색 루프를 돌고, 이미 충분히 구체적이면 direct clarify로 빠르게 정리합니다.
 
-Dev Kit은 두 개의 read-only hook을 제공합니다.
+`planning`도 여전히 필수 실행 전 단계이지만, 다음 조건을 모두 만족하면 direct-clarify 산출물을 직접 만들면서 시작할 수 있습니다.
+
+- 재개 가능한 세션이 없고
+- 요청이 바로 계획을 만들 만큼 충분히 구체적이며
+- 짧은 `brief.md`를 즉시 만들 수 있을 때
+
+즉, 기본 규칙은 "먼저 `clarify`"이고, 예외적으로 이미 명확한 작업은 `planning`이 바로 진입하는 빠른 경로를 가질 수 있습니다.
+
+## 핵심 단계
+
+| 단계 | 역할 | 주요 산출물 |
+|---|---|---|
+| `clarify` | 범위, 성공 기준, 제약, 기술 컨텍스트를 잠그고 복잡도를 평가하며 세션 상태를 초기화합니다. | `current.json`, `state.json`, `brief.md` |
+| `planning` | 실행 가능한 계획을 만들고, 내부 `planner -> critic + readiness-checker` 검토를 거쳐 승인된 계획을 고정합니다. | `plan.md`, `plan-review.md` |
+| `execute` | 승인된 계획을 worker-validator 루프, 체크포인트, 재개 가능한 상태 갱신으로 수행합니다. | 코드 변경, `progress.md`, 선택적 `checkpoints/*.json`, 선택적 `handoff.md` |
+| `review-execute` | 승인된 계획을 기준으로 분리된 최종 검증을 수행합니다. | `review.md`, 선택적 `compound.md` |
+
+### `review-execute`의 격리 모델
+
+`review-execute`는 단순한 마지막 체크리스트가 아닙니다. 오케스트레이터가 세션 탐색과 사전 점검을 수행한 뒤, 독립된 리뷰어 에이전트를 실행합니다. 이 리뷰어는 `plan.md`, `plan-review.md`, `state.json`, 그리고 실제 코드베이스만 읽고 검증하며, 실행 로그나 워커 출력은 읽지 않습니다.
+
+## 훅
+
+Dev Kit은 두 개의 읽기 전용 훅을 제공합니다.
 
 - `SessionStart`
 - `UserPromptSubmit`
 
-두 hook 모두 워크스페이스 루트를 해석하고, 공용 session-recovery helper를 사용합니다. 우선 `.dev-kit/current.json`을 보고, 필요하면 `.dev-kit/sessions/*/state.json`을 스캔한 뒤 짧은 요약을 출력합니다.
+이 훅들이 하는 일:
 
-- `session_id`
-- `current_phase`
-- `status`
-- `next_action`
-- `execution_profile`
-- `plan_status`
-- `plan_version`
+- 워크스페이스 루트를 해석합니다.
+- 먼저 `.dev-kit/current.json`을 보고, 필요하면 `.dev-kit/sessions/*/state.json`을 스캔해 우선 세션을 찾습니다.
+- 현재 활성 세션 또는 재개 가능한 세션의 수동 컨텍스트를 보여줍니다.
 
-재개 가능한 세션을 선택할 수 없으면 상태를 바꾸지 않고 한 줄 경고만 출력합니다.
+이 훅들이 하지 않는 일:
 
-## Skills
+- `clarify`, `planning`, `execute`, `review-execute`를 자동 시작하지 않습니다.
+- 세션 상태를 변경하지 않습니다.
+- 다음 단계를 임의로 선택하지 않습니다.
 
-### Core Pipeline
+`SessionStart`는 수동 `additionalContext`를 추가합니다. 산출물 상태에 따라 다음 정보가 포함될 수 있습니다.
 
-| Skill | Trigger | Description |
-|---|---|---|
-| **clarify** | Dev Kit 흐름에 들어오는 모든 새 작업, 특히 모호하거나 불완전한 요청 | 필수 진입 phase입니다. Context Brief를 만들고, 복잡도를 평가하며, `.dev-kit/` 세션 상태를 초기화합니다. 이미 명확한 작업은 긴 Q&A 대신 direct clarify로 짧게 처리할 수 있습니다. |
-| **planning** | clarify 완료 후, 또는 필수 pre-execute planning phase를 재개할 때 | 필수 pre-execute phase입니다. minimal plan 또는 full approved `plan.md`를 쓰고, 내부적으로 `planner -> critic + readiness-checker` 검토 번들을 수행하고, 집계된 결과를 `plan-review.md`에 기록하고, execute readiness를 증명한 뒤 active session state를 실행 상태로 업데이트합니다. |
-| **execute** | "run the plan", "execute the plan", "let's start implementing" | 승인된 plan만 실행하는 통합 실행 오케스트레이터입니다. worker-validator loop를 돌리고, phased run용 checkpoint JSON을 쓰고, 완료된 작업을 review-execute로 넘깁니다. |
-| **review-execute** | "review the work", "verify the implementation", "check if the plan was executed correctly" | 승인된 plan에 대한 최종 독립 검증입니다. |
+- 세션 요약
+- 최근 진행 상황
+- 핸드오프 재개 지점
+- Compound Learning 요약
 
-### Debugging
-
-| Skill | Trigger | Description |
-|---|---|---|
-| **systematic-debugging** | 버그, 테스트 실패, 예상 밖 동작 | Define -> Reproduce -> Evidence -> Isolate -> Lock -> Fix -> Verify의 7단계 디버깅 워크플로우입니다. |
-
-### Code Quality
-
-| Skill | Trigger | Description |
-|---|---|---|
-| **karpathy** | 구현 전 코드 읽기 없이 수정하려고 할 때, 또는 "implement..."류 요청 | read before write, 좁은 범위 유지, 가정 검증, 성공 기준 정의를 강제하는 구현 규율입니다. |
-| **rob-pike** | "optimize", "slow", "performance", "speed up" | 측정 기반 최적화 규율입니다. |
-| **clean-ai-slop** | "clean up", "deslop", "clean AI code" | AI가 만든 코드에서 자주 나오는 냄새를 순차 패스로 제거합니다. `.dev-kit/**` 메타데이터는 제외합니다. |
-| **simplify-code** | "simplify", "clean up the code", "review the changes" | reuse, quality, efficiency 관점에서 diff를 병렬 리뷰합니다. `.dev-kit/**` 메타데이터는 검토 범위에서 제외합니다. |
-
-## 상태 모델
-
-### Workspace Root Resolution
-
-Dev Kit은 canonical workspace root를 다음 순서로 결정합니다.
-
-1. `DEV_KIT_STATE_ROOT`
-2. git top-level
-3. 현재 작업 디렉터리
-
-JSON에 저장되는 모든 상태 경로는 이 루트를 기준으로 한 상대 경로입니다.
-
-### `.dev-kit/current.json`
-
-```json
-{
-  "schema_version": 1,
-  "session_id": "2026-04-06T16-30-auth-refactor",
-  "session_path": ".dev-kit/sessions/2026-04-06T16-30-auth-refactor",
-  "updated_at": "2026-04-06T16:45:00+09:00"
-}
-```
-
-### `.dev-kit/sessions/<session-id>/state.json`
-
-필수 필드는 다음과 같습니다.
-
-- `schema_version`
-- `session_id`
-- `title`
-- `feature_slug`
-- `status`
-- `current_phase`
-- `execution_profile`
-- `plan_status`
-- `plan_version`
-- `next_action`
-- `artifacts`
-- `phase_status`
-- `created_at`
-- `updated_at`
-
-선택 필드:
-
-- `failure_reason`
-
-번들된 스키마는 `schema/state.schema.json`에 있습니다.
-
-### Status Semantics
-
-- `in_progress` — 세션이 `clarify`, `planning`, `execute`, `review-execute` 중 하나 안에서 진행 중인 상태
-- `completed` — `review-execute`가 통과한 뒤의 최종 성공 상태
-- `failed` — 실행 드리프트, 검증 반복 실패, 워크플로에서 회복 불가한 실패가 기록된 상태
-- `paused` — 외부 의존성 또는 사용자 결정 대기 등으로 재개가 필요한 중단 상태
-
-`failure_reason`은 `status`가 `failed` 또는 `paused`가 아니면 `null`이어야 하며, 해당 상태에서는 설명 문자열이 필수입니다.
-
-승인된 plan이 실제로는 실행 불가능한 것으로 드러나더라도, 그 상황은 정상 상태 그래프 밖에서 해결해야 하는 planning contract violation으로 취급합니다.
-
-### Plan Status Semantics
-
-- `not_started` — planning에 들어갈 만큼 clarify는 끝났지만 아직 초안 plan이 없음
-- `drafting` — planning이 `plan.md`를 작성 중인 상태
-- `in_review` — `critic`와 `readiness-checker`가 현재 draft plan을 검토 중인 상태
-- `revising` — critique 또는 readiness 결과를 반영해 draft를 수정 중인 상태
-- `approved` — plan이 freeze되었고 `execute`로 넘어갈 수 있는 상태
-
-### Phase Status Semantics
-
-- `pending` — 계획된 phase가 아직 시작되지 않음
-- `executing` — phase가 현재 실행 중
-- `completed` — phase가 성공적으로 끝남
-
-### 사람이 읽는 산출물
-
-각 세션 디렉터리에는 다음 파일이 있을 수 있습니다.
-
-- `brief.md`
-- `plan.md`
-- `plan-review.md` — 원시 reviewer 로그가 아니라 planning 승인 근거를 모은 집계 문서
-- `review.md`
-- `progress.md` — append-only 실행 진행 로그, `state.json`에 추적하지 않음
-- `handoff.md` — context reset mode용 통합 재개 스냅샷, `state.json`에 추적하지 않음
-- `checkpoints/*.json`
-
-이 문서들은 사람을 위한 것이고, machine-readable source of truth는 항상 `state.json`입니다.
-
-## 핵심 설계 원칙
-
-**One Visible Flow** — 모든 작업은 `clarify -> planning -> execute -> review-execute`를 통과하며, 복잡도는 사용자에게 보이는 라우팅이 아니라 phase 깊이에만 영향을 줍니다.
-
-**Planning Owns Plan Quality** — `planning`은 `execute` 전에 plan을 draft, critique, readiness-check, revise, freeze까지 마쳐야 합니다.
-
-**Planning Closes Execute Readiness** — 환경, 검증, 의존성, worktree 가정은 `planning`에서 증명해야 하며 `execute`로 미루지 않습니다.
-
-**Planning Uses Internal Role Isolation** — `planner`, `critic`, `readiness-checker`는 서로 독립적으로 동작하고, orchestrator만 `.dev-kit` 상태와 산출물을 기록합니다.
-
-**Pure Execute Stage** — `execute`는 승인된 plan을 소비해 구현과 검증을 수행하며, planning을 다시 열거나 새 workflow state를 만들지 않습니다.
-
-**Clarify And Planning Always Exist** — 이미 명확한 작업은 direct clarify를 사용하고, trivial work는 minimal approved plan을 사용하지만, execute는 두 상위 phase가 materialize되기 전에는 시작하지 않습니다.
-
-**Review-Execute Verifies Results Only** — `review-execute`는 최종 코드베이스를 승인된 plan과 비교하고, implementation drift가 있을 때만 `execute`로 돌려보냅니다.
-
-**JSON Source Of Truth** — `state.json`이 canonical source이고, Markdown 문서는 사람이 읽는 파생물입니다.
-
-**Shared Session Recovery** — planning, execute, review-execute는 별도 `resume` skill 대신 공용 `.dev-kit/current.json` 포인터와 session scan helper를 사용합니다.
-
-**Worker-Validator Isolation** — task validator는 worker output과 분리되고, final review도 execution context와 분리됩니다.
-
-**Single Writer State** — 특히 phased execution이나 worktree 기반 실행에서는 orchestrator만 session JSON을 갱신합니다.
-
-**Checkpointed Recovery** — phased execution은 integration gate 통과 후 checkpoint JSON을 기록해서, 별도 recovery stage 없이도 안전하게 재시작할 수 있게 합니다.
-
-## Quick Start
+`UserPromptSubmit`는 현재 세션에 대한 간단한 한 줄 요약을 출력합니다. 예를 들면 다음과 같습니다.
 
 ```text
-"Clarify this task, create a plan, execute it, and run review-execute on the result."
-"Debug this failing test with systematic root-cause analysis."
-"Review and simplify the changed code for quality issues."
+Dev Kit: 2026-04-06T16-30-auth-refactor | phase=planning | status=in_progress | next=Run planning. Read .dev-kit/sessions/2026-04-06T16-30-auth-refactor/brief.md. | profile=medium | plan=not_started/v0 | compound=none
 ```
+
+이 줄이 보인다는 뜻은 훅이 세션 상태를 찾았다는 의미입니다. 단계가 자동으로 시작됐다는 뜻은 아닙니다.
+
+## 재개는 어떻게 동작하는가
+
+세션 복구는 단계 스킬과 훅이 공용으로 사용합니다.
+
+- 우선 포인터: `.dev-kit/current.json`
+- 대체 탐색: `.dev-kit/sessions/*/state.json`
+- 재개 가능한 상태: `in_progress`, `paused`
+- 재개 대상이 아닌 상태: `completed`
+
+재개 가능한 세션이 여러 개 있는데 유효한 `current.json`이 없으면, Dev Kit은 임의로 고르지 않고 경고를 반환하며 명시적 포인터를 요구합니다.
+
+## 세션 파일
+
+모든 세션 상태는 워크스페이스 루트의 `.dev-kit/` 아래에 저장됩니다.
+
+| 경로 | 용도 |
+|---|---|
+| `.dev-kit/current.json` | 현재 활성 세션 또는 우선 재개 세션을 가리키는 포인터 |
+| `.dev-kit/sessions/<session-id>/state.json` | 기계가 참조하는 기준 세션 상태 파일 |
+| `.dev-kit/sessions/<session-id>/brief.md` | 범위, 제약, 성공 기준, 복잡도 평가를 담는 clarify 산출물 |
+| `.dev-kit/sessions/<session-id>/plan.md` | 승인된 실행 계획의 기준 문서 |
+| `.dev-kit/sessions/<session-id>/plan-review.md` | critic와 readiness checking의 집계된 planning 판정 기록 |
+| `.dev-kit/sessions/<session-id>/review.md` | `review-execute`의 최종 검증 결과 |
+| `.dev-kit/sessions/<session-id>/progress.md` | 오케스트레이터가 기록하는 추가 전용 실행 로그 |
+| `.dev-kit/sessions/<session-id>/handoff.md` | 컨텍스트 리셋 모드에서 사용하는 재개 스냅샷 |
+| `.dev-kit/sessions/<session-id>/checkpoints/*.json` | 단계 분할 실행을 위한 체크포인트 |
+| `.dev-kit/sessions/<session-id>/compound.md` | 이번 작업에서 추출한 세션 로컬 학습 |
+| `.dev-kit/learnings/index.json` | 전역 학습 인덱스 |
+| `.dev-kit/learnings/<id>.md` | 이후 세션에서 재사용되는 개별 학습 문서 |
+
+## 상태 헬퍼 CLI
+
+`scripts/dev_kit_state.py`는 훅과 단계 스킬이 함께 사용하는 공용 계약입니다.
+
+자주 쓰는 명령은 다음과 같습니다.
+
+- `summary`: 우선 재개 세션 요약 출력
+- `resolve-workspace-root`: 현재 호출 기준의 워크스페이스 루트 해석
+- `write-json`: `.dev-kit` JSON 파일을 안전하게 갱신
+- `learnings-summary`: 관련 Compound Learning 요약 출력
+- `bump-learning`: 실제로 참조한 학습의 카운터 갱신
+- `clear-current`: 대상 세션을 가리킬 때만 `current.json` 제거
+
+## 워크스페이스 루트 해석
+
+Dev Kit은 워크스페이스 루트를 다음 순서로 결정합니다.
+
+1. `DEV_KIT_STATE_ROOT`
+2. 가장 가까운 기존 `.dev-kit` 루트
+3. git top-level
+4. 현재 작업 디렉터리
+
+JSON에 저장되는 모든 경로는 이 루트를 기준으로 한 상대 경로여야 합니다.
+
+## 지원 스킬
+
+### 워크플로우 지원
+
+| 스킬 | 역할 |
+|---|---|
+| `compound` | `.dev-kit/learnings/` 아래의 재사용 가능한 학습을 추출, 갱신, 조회합니다. 사용자가 원하면 완료된 작업뿐 아니라 진행 중인 작업에서도 학습을 추출할 수 있습니다. |
+
+### 디버깅
+
+| 스킬 | 역할 |
+|---|---|
+| `systematic-debugging` | Define -> Reproduce -> Evidence -> Isolate -> Lock -> Fix -> Verify의 7단계 디버깅 워크플로우 |
+
+### 코드 품질
+
+| 스킬 | 역할 |
+|---|---|
+| `karpathy` | read-before-write 구현 규율 |
+| `rob-pike` | 측정 기반 성능 개선 규율 |
+| `clean-ai-slop` | AI 생성 코드에서 자주 보이는 냄새 제거 |
+| `simplify-code` | 변경된 코드의 재사용성, 품질, 효율성 검토 |
+
+## 기여자 참고 자료
+
+핵심 구현과 참조 문서:
+
+- [skills/clarify/SKILL.md](./skills/clarify/SKILL.md)
+- [skills/planning/SKILL.md](./skills/planning/SKILL.md)
+- [skills/execute/SKILL.md](./skills/execute/SKILL.md)
+- [skills/review-execute/SKILL.md](./skills/review-execute/SKILL.md)
+- [skills/compound/SKILL.md](./skills/compound/SKILL.md)
+- [scripts/dev_kit_state.py](./scripts/dev_kit_state.py)
+- [hooks/hooks.json](./hooks/hooks.json)
+- [schema/state.schema.json](./schema/state.schema.json)
+- [schema/learnings-index.schema.json](./schema/learnings-index.schema.json)
+- [tests/test_dev_kit_state.py](./tests/test_dev_kit_state.py)
 
 ## 프로젝트 구조
 
 ```text
 dev-kit/
-├── .claude-plugin/plugin.json
-├── .codex-plugin/plugin.json
+├── .claude-plugin/
+├── .codex-plugin/
 ├── .mcp.json
 ├── .app.json
-├── hooks/
-│   ├── hooks.json
-│   ├── session-start.sh
-│   └── user-prompt-submit.sh
-├── schema/
-│   └── state.schema.json
-├── scripts/
-│   └── dev_kit_state.py
-├── tests/
-│   └── test_dev_kit_state.py
-├── README.md
-├── README.ko.md
 ├── assets/
-│   ├── icon.png
-│   └── logo.png
-└── skills/
-    ├── clarify/SKILL.md
-    ├── planning/SKILL.md
-    ├── execute/SKILL.md
-    ├── review-execute/SKILL.md
-    ├── systematic-debugging/
-    ├── karpathy/SKILL.md
-    ├── rob-pike/SKILL.md
-    ├── clean-ai-slop/SKILL.md
-    └── simplify-code/SKILL.md
+├── hooks/
+├── schema/
+├── scripts/
+├── skills/
+├── tests/
+├── README.md
+└── README.ko.md
 ```
 
-## License
+## 라이선스
 
 MIT

@@ -1,6 +1,6 @@
 ---
 name: review-execute
-description: Final independent verification for the unified Dev Kit workflow stage `review-execute`.
+description: Explicitly invoked final independent verification for the unified Dev Kit workflow stage `review-execute`.
 ---
 
 # Review-Execute Work
@@ -23,7 +23,7 @@ Review is isolated from execution context. The reviewer judges the current codeb
 
 ## When To Use
 
-- After `execute` completes
+- After the user explicitly runs `execute` and it completes
 - After the upstream `clarify` and `planning` phases have already materialized the approved plan consumed by execute
 - When the user asks to review or verify the implementation
 - When final independent verification is needed before calling a session complete
@@ -56,7 +56,43 @@ Read:
 - `.dev-kit/sessions/<session-id>/plan.md`
 - `.dev-kit/sessions/<session-id>/plan-review.md`
 
+## Execution Model
+
+Review runs in two separate contexts to guarantee structural isolation from execution output:
+
+1. **Orchestrator** (this context): session discovery → pre-flight check → spawn Reviewer Agent → report verdict
+2. **Reviewer Agent** (isolated context): performs the actual review with only `plan.md`, `plan-review.md`, `state.json`, and the codebase — never execution logs or worker output
+
+## Orchestrator Role
+
+**Do not perform the review yourself.** Your role is to discover the session, confirm pre-conditions, and dispatch the Reviewer Agent.
+
+### Pre-flight
+
+1. Discover the session using the order above
+2. Read `state.json` and confirm `plan_status` is `approved`
+3. Confirm `plan-review.md` exists
+
+If pre-flight fails, stop and report to the user without spawning the Agent.
+
+### Dispatch Reviewer Agent
+
+Spawn an isolated Agent:
+
+```
+Agent({
+  description: "Independent review-execute: <session-id>",
+  prompt: "You are the independent Reviewer Agent for Dev Kit session <session-id>.\n\nSession path: .dev-kit/sessions/<session-id>/\n\nRead the file at dev-kit/skills/review-execute/SKILL.md and follow exactly the instructions under '## Review Process' and all sections that follow it.\n\nHARD CONSTRAINT: Do NOT read progress.md, execution logs, worker output, or validator results. Your only permitted inputs are: plan.md, plan-review.md, state.json, and the codebase files listed in plan.md."
+})
+```
+
+After the Agent completes, report its verdict and findings to the user verbatim. Do not interpret or summarize — the Agent's output is the authoritative review result.
+
 ## Review Process
+
+> **Reviewer Agent entry point.** If you were spawned as an Agent, begin executing here. Everything above this section is Orchestrator-only instructions.
+>
+> **Hard constraint:** Do NOT read `progress.md`, execution logs, or any file that captures worker or validator output. Your only permitted inputs are `plan.md`, `plan-review.md`, `state.json`, and the codebase.
 
 ### Step 1: Load The Approved Plan
 
@@ -212,11 +248,101 @@ When `execution_profile` is `low`, the review artifact MAY use this compact form
 
 The compact review omits: Scope Verification table, Code Hygiene checklist, detailed Findings. These are required for medium and high profiles. If the verdict is FAIL, the compact review MUST still include file path and line references for the failure.
 
+## Compound Learning Extraction
+
+After a **PASS** verdict, before transitioning to `completed`, extract reusable learnings from this session.
+
+### Extraction Process
+
+1. **Analyze session artifacts.** Read `brief.md`, `plan.md`, and `review.md` to identify reusable patterns, architectural decisions, debugging insights, performance optimizations, or testing strategies.
+
+2. **Auto-detect signals.** Score each signal type found in the artifacts:
+
+| Signal | Example | Weight |
+|---|---|---|
+| Repeated pattern resolution | "This error pattern has occurred before" | High |
+| Architecture decision | "Chose this structure because..." | High |
+| Performance optimization | "Changed N+1 queries to batch, reducing response time" | Medium |
+| Debugging insight | "Root cause was initialization order of X" | Medium |
+| Testing strategy | "Integration tests more effective than unit tests for this type" | Medium |
+
+3. **Branch on signal count:**
+
+   **If signals detected (≥1 high or ≥2 medium):**
+   - Draft a complete `compound.md` candidate automatically using the template below
+   - Present the draft to the user:
+     > "세션에서 learning 후보를 추출했습니다:
+     >
+     > **[learning-id]** — [one-line summary of Decision]
+     >
+     > [Situation 1-2 sentences] → [Decision 1 sentence]
+     >
+     > **approve** — 그대로 저장 | **edit** — 수정 후 저장 | **skip** — 건너뛰기"
+   - **approve:** Save the draft as-is
+   - **edit:** User provides corrections, apply them, then save
+   - **skip:** Set `compound_status` to `skipped`
+
+   **If no signals detected (low-profile session, trivial task, or no reusable pattern found):**
+   - Do not ask the user; automatically set `compound_status` to `skipped` and proceed to `completed`
+
+4. **Quality gate before saving.** Only save if the draft satisfies:
+   - Decision is concrete and actionable (not vague like "this was tricky")
+   - Applicability section includes at least one "When NOT to apply" clause
+   - Learning is scoped to one concept (not bundled with unrelated insights)
+
+### compound.md Format
+
+Save to `.dev-kit/sessions/<session-id>/compound.md`:
+
+```markdown
+# <learning-id>
+
+> Source: <session-id>
+
+## Situation
+[What problem or context triggered this learning]
+
+## Decision
+[What was decided or discovered]
+
+## Rationale
+- [Why this decision was made]
+- [What alternatives were considered]
+
+## Applicability
+- [When to apply this learning]
+- [When NOT to apply this learning]
+```
+
+### Learning Entry Creation
+
+After writing `compound.md`, create a learning entry:
+
+1. Derive `learning-id` from the learning title: lowercase, hyphenated, max 4 words
+2. Write `.dev-kit/learnings/<learning-id>.md` with the same content as `compound.md`
+3. Update `.dev-kit/learnings/index.json`:
+   - Add entry with `id`, `title`, `source_session`, `tags` (3-6 keywords), `context_types` (technology/domain), `file`, `created_at`, `reference_count: 0`, `status: "active"`
+
+Use the helper:
+
+```bash
+python3 ./scripts/dev_kit_state.py write-json --workspace-root "<workspace-root>" --path ".dev-kit/learnings/index.json" <<'JSON'
+{...}
+JSON
+```
+
+### State After Compound
+
+- If learning extracted: `compound_status: "extracted"`, `artifacts.compound` points to `compound.md`
+- If skipped: `compound_status: "skipped"`, `artifacts.compound` remains `null`
+
 ## State Update
 
-After saving `review.md`, update `.dev-kit/sessions/<session-id>/state.json`:
+After saving `review.md` and completing the compound extraction step, update `.dev-kit/sessions/<session-id>/state.json`:
 
 - set `artifacts.review` to `.dev-kit/sessions/<session-id>/review.md`
+- set `artifacts.compound` to `.dev-kit/sessions/<session-id>/compound.md` (if extracted) or `null` (if skipped)
+- set `compound_status` to `extracted` or `skipped` based on the compound extraction step
 - update `updated_at`
 
 Then set state according to the verdict:
@@ -226,11 +352,12 @@ Then set state according to the verdict:
   - `current_phase`: `review-execute`
   - `plan_status`: `approved`
   - `next_action`: `Session complete.`
+  - `compound_status`: `extracted` or `skipped`
 
 Recommended state write pattern:
 
 ```bash
-python3 ./scripts/dev_kit_state.py write-json --path ".dev-kit/sessions/<session-id>/state.json" <<'JSON'
+python3 ./scripts/dev_kit_state.py write-json --workspace-root "<workspace-root>" --path ".dev-kit/sessions/<session-id>/state.json" <<'JSON'
 {...}
 ```
 
@@ -261,7 +388,7 @@ Use the helper command to avoid races:
 
 ```bash
 python3 ./scripts/dev_kit_state.py clear-current --session-id <session-id>
-python3 ./scripts/dev_kit_state.py write-json --path ".dev-kit/current.json" <<'JSON'
+python3 ./scripts/dev_kit_state.py write-json --workspace-root "<workspace-root>" --path ".dev-kit/current.json" <<'JSON'
 {...}
 ```
 ```
@@ -284,11 +411,12 @@ python3 ./scripts/dev_kit_state.py write-json --path ".dev-kit/current.json" <<'
 - [ ] Were required verification commands re-run?
 - [ ] Was `review.md` saved?
 - [ ] Were FAIL verdicts grounded in plan acceptance criteria, not subjective quality?
+- [ ] Was the compound extraction step completed (extracted or skipped)?
 - [ ] Does state now point to completion or execute?
 
 ## Transition
 
-- PASS -> session is complete
+- PASS -> compound extraction (ask user) -> session is complete
 - FAIL due implementation drift -> return to `execute`
 - planning contract violation -> stop and report the issue outside the normal workflow state model
 

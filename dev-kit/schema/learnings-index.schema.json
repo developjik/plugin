@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/developjik/plugin/dev-kit/learnings-index.schema.json",
+  "title": "Dev Kit Learnings Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "learnings"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "learnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "source_session",
+          "tags",
+          "context_types",
+          "file",
+          "created_at",
+          "last_referenced_at",
+          "reference_count",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique slug identifier for the learning"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable title"
+          },
+          "source_session": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Session ID where this learning was extracted"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Keyword tags for matching relevance"
+          },
+          "context_types": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Technology or domain context types (e.g. nodejs, api, react)"
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Filename of the learning markdown in learnings/ directory"
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "last_referenced_at": {
+            "type": ["string", "null"],
+            "description": "ISO timestamp of last time this learning was injected into a session"
+          },
+          "reference_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "archived"]
+          }
+        }
+      }
+    }
+  }
+}

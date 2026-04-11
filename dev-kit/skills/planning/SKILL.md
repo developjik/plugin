@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Mandatory pre-execute phase for Dev Kit. Runs after clarify, writes either a minimal or full approved `plan.md`, uses a `planner -> critic + readiness-checker` internal review bundle, proves execute readiness, and updates `.dev-kit/` state for execution.
+description: Explicitly invoked mandatory pre-execute phase for Dev Kit. Runs after clarify, writes either a minimal or full approved `plan.md`, uses a `planner -> critic + readiness-checker` internal review bundle, proves execute readiness, and updates `.dev-kit/` state for execution.
 ---
 
 # Plan Crafting
@@ -23,7 +23,7 @@ The plan must remove implementer decisions. Even trivial work needs a minimal ap
 
 ## When To Use
 
-- After `clarify` saves `brief.md`
+- After the user explicitly runs `clarify` and it saves `brief.md`
 - When resuming the mandatory pre-execute planning phase
 - When the user provides a clear implementation scope and the task still needs to be materialized into an approved plan
 - When ordering, verification, or split strategy matters
@@ -82,6 +82,23 @@ Extract:
 - Success criteria
 - `execution_profile` from `state.json`
 - current `plan_version` and `plan_status`
+- **Compound learnings** from the session-start context (if available)
+
+#### Compound Learning Integration
+
+If compound learnings were injected via the session-start hook (`## Compound Learnings` context block):
+
+1. Identify learnings whose tags or context_types overlap with the current task's technology stack and domain
+2. For each relevant learning, read the full `.dev-kit/learnings/<id>.md` to extract the decision and rationale
+3. Incorporate relevant past decisions into the plan:
+   - Reference the learning ID in the plan rationale when a past decision applies
+   - Use past insights to inform verification strategy, execution structure, or task ordering
+4. For each learning actually referenced in the plan, bump its reference counter:
+   ```bash
+   python3 ./scripts/dev_kit_state.py bump-learning --workspace-root "<workspace-root>" --learning-id "<id>"
+   ```
+5. Do not blindly apply learnings — verify they still hold against the current codebase state
+6. If a learning contradicts current requirements, note the divergence in the plan rationale
 
 If planning was entered directly from a clear prompt with no existing session:
 
@@ -208,14 +225,24 @@ Decision rules:
 
 After the draft is written:
 
-- set `plan_status` to `in_review`
-- run `critic` and `readiness-checker` against the same draft `plan.md`
-- do not let the `critic` see the planner's internal reasoning or the readiness result
-- do not let the `readiness-checker` see the critic result before its first verdict
-- have the `critic` check feasibility, dependency ordering, integration risk, verification coverage, and parallel/write-set safety
-- have the `readiness-checker` confirm that chosen verification commands can run and that required env vars, credentials, services, dependencies, and worktree assumptions hold
-- have the `readiness-checker` verify that tool detection results from Step 1 still hold: config files exist, detected tools are installed, and any dev server referenced in the verification strategy can start
-- aggregate the two verdicts in `plan-review.md`
+1. Set `plan_status` to `in_review`
+2. Spawn Critic Agent and Readiness-Checker Agent **in parallel** — see Agent dispatch below
+3. Wait for both verdicts
+4. Aggregate the two verdicts in `plan-review.md`
+
+**Agent dispatch:**
+
+```
+Agent({
+  description: "Plan critic: <session-id>",
+  prompt: "You are the Critic for Dev Kit session <session-id>.\n\nSession path: .dev-kit/sessions/<session-id>/\n\nRead dev-kit/skills/planning/SKILL.md, section '## Critic Agent Instructions'. Follow them exactly.\n\nYour only permitted inputs: plan.md and brief.md. Do not read planner reasoning, repo exploration notes, or readiness-checker output."
+})
+
+Agent({
+  description: "Plan readiness-checker: <session-id>",
+  prompt: "You are the Readiness-Checker for Dev Kit session <session-id>.\n\nSession path: .dev-kit/sessions/<session-id>/\n\nRead dev-kit/skills/planning/SKILL.md, section '## Readiness-Checker Agent Instructions'. Follow them exactly.\n\nYour permitted inputs: plan.md, brief.md, and the repository environment (run commands to verify). Do not read planner reasoning or critic output."
+})
+```
 
 The aggregated review output must say either:
 
@@ -453,6 +480,74 @@ After the final aggregated review passes and the plan is frozen, update `.dev-ki
 - update `updated_at`
 
 Also refresh `.dev-kit/current.json` with the same `session_id`, `session_path`, and a new `updated_at`.
+
+## Critic Agent Instructions
+
+> **Agent entry point.** If you were spawned as a Critic Agent, begin here. Everything above is Orchestrator-only instructions.
+>
+> **Hard constraint:** Do NOT read planner reasoning, repo exploration notes, or readiness-checker output. Your only inputs are `plan.md` and `brief.md`.
+
+Read `.dev-kit/sessions/<session-id>/plan.md` and evaluate it against these criteria:
+
+**Feasibility**
+- Are task steps concrete and executable with no TODOs or placeholders?
+- Does the implementation approach match the declared tech stack and architecture?
+
+**Dependency ordering**
+- Are task dependencies declared correctly?
+- Would executing tasks in the stated order produce a working intermediate state at each step?
+- Are parallel groups truly independent (no shared writes, no implicit ordering)?
+
+**Integration risk**
+- Are integration gates placed at the right phase boundaries?
+- Do tasks that touch shared state, schemas, or contracts have explicit coordination?
+
+**Verification coverage**
+- Does each task have acceptance criteria that can be verified without ambiguity?
+- Does the plan-level verification strategy actually prove the goal is met?
+
+**Parallel/write-set safety**
+- Does the Write-Set Overlap Check correctly identify conflicts?
+- Are tasks marked parallel truly safe to run concurrently?
+- Is worktree eligibility justified?
+
+**Output format:**
+
+Return a verdict of `PASS` or `FAIL` with a list of findings. For FAIL, each finding must name the specific section, task, or criterion that fails and why. Do not write to any `.dev-kit/**` files — return your findings as text only.
+
+---
+
+## Readiness-Checker Agent Instructions
+
+> **Agent entry point.** If you were spawned as a Readiness-Checker Agent, begin here. Everything above is Orchestrator-only instructions.
+>
+> **Hard constraint:** Do NOT read planner reasoning or critic output. Your permitted inputs are `plan.md`, `brief.md`, and the repository environment (run commands to verify).
+
+Read `.dev-kit/sessions/<session-id>/plan.md` and verify that execute can start cleanly:
+
+**Verification commands**
+- Run each verification command stated in the plan's Verification Strategy
+- Confirm commands exit successfully (or identify exactly why they fail)
+- Confirm detected tool config files still exist at the stated paths
+
+**Dependencies and environment**
+- Check that required packages, runtimes, and build tools are installed
+- Check that required environment variables and credentials are present
+- Check that required external services are reachable (if applicable)
+
+**Worktree and parallel assumptions**
+- Confirm that any group marked worktree-eligible has a truly disjoint write set in the current repo state
+- Confirm no in-progress locks or uncommitted changes would block parallel execution
+
+**Dev server (if referenced)**
+- If the verification strategy requires a running dev server, confirm it can start
+- Confirm the port and host assumptions in the plan match the actual project config
+
+**Output format:**
+
+Return a verdict of `PASS` or `FAIL` with a list of findings. For FAIL, each finding must name the specific check that failed, the exact command or file checked, and the observed error or missing value. Do not write to any `.dev-kit/**` files — return your findings as text only.
+
+---
 
 ## Anti-Patterns
 

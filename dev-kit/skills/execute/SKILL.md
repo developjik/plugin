@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Unified execution orchestrator for Dev Kit. Reads the approved canonical `plan.md`, executes either a single-phase or phased plan, enforces task validation, and manages checkpoint JSON plus resume-safe `.dev-kit/` state updates.
+description: Explicitly invoked execution orchestrator for Dev Kit. Reads the approved canonical `plan.md`, executes either a single-phase or phased plan, enforces task validation, and manages checkpoint JSON plus resume-safe `.dev-kit/` state updates.
 ---
 
 # Run Plan
@@ -23,7 +23,7 @@ Execute follows the approved plan faithfully. Planning already closed plan quali
 
 ## When To Use
 
-- After `planning` freezes an approved canonical `plan.md`
+- After the user explicitly runs `planning` and it freezes an approved canonical `plan.md`
 - When the user wants the plan carried out
 - When a session is ready to resume execution
 

@@ -1,6 +1,6 @@
 ---
 name: clarify
-description: Mandatory entry phase for every new Dev Kit task. Produces a Context Brief, scores complexity, and initializes `.dev-kit/` session state for the unified clarify -> planning -> execute -> review-execute workflow. Already-clear work may use direct clarify instead of a longer question loop.
+description: Mandatory entry phase when explicitly starting a new Dev Kit task. Produces a Context Brief, scores complexity, and initializes `.dev-kit/` session state for the unified clarify -> planning -> execute -> review-execute workflow. Already-clear work may use direct clarify instead of a longer question loop.
 ---
 
 # Clarification Through Iterative Discovery
@@ -9,7 +9,7 @@ Turns every new task into a decision-ready work scope. Clarify does not choose b
 
 ## Core Principle
 
-Clarify is the mandatory entry phase for every new Dev Kit task. When ambiguity is high, it runs as an interactive discovery loop. When the request is already concrete, it runs as direct clarify: confirm the scope from repo reality, lock a concise brief, and move on without unnecessary questions. Its output is always a Context Brief plus execution-profile guidance that planning can act on without reopening basic product questions.
+Clarify is the mandatory entry phase once a user explicitly starts a new Dev Kit task. When ambiguity is high, it runs as an interactive discovery loop. When the request is already concrete, it runs as direct clarify: confirm the scope from repo reality, lock a concise brief, and move on without unnecessary questions. Its output is always a Context Brief plus execution-profile guidance that planning can act on without reopening basic product questions.
 
 ## Hard Gates
 
@@ -61,7 +61,8 @@ Write `.dev-kit/sessions/<session-id>/state.json`:
     "brief": null,
     "plan": null,
     "plan_review": null,
-    "review": null
+    "review": null,
+    "compound": null
   },
   "phase_status": {},
   "created_at": "YYYY-MM-DDTHH:MM:SS+TZ",
@@ -73,7 +74,7 @@ All paths stored in JSON must be relative to the workspace root.
 
 ## When To Use
 
-- At the start of every new Dev Kit task
+- When explicitly starting a new Dev Kit task
 - When the request is vague enough that implementation could go in multiple directions
 - When the user wants a new feature but scope, success criteria, or constraints are not yet concrete
 - When the request already looks concrete but the brief and execution profile have not been materialized yet
@@ -108,6 +109,16 @@ Inspect the repo in parallel to discover:
 - Existing patterns the plan should preserve
 
 Summarize only the parts that matter to the user's decision.
+
+### Track 3: Compound Learning Reference
+
+If compound learnings are available (injected via session-start hook in the `## Compound Learnings` context block):
+
+1. Scan the listed learnings for relevance to the current task
+2. If a past learning directly applies, mention it when asking clarifying questions or grounding scope:
+   > "A past learning [`<id>`] suggests <insight>. Does this apply here?"
+3. Reference relevant learnings in the Technical Context section of the brief
+4. Do not force-fit unrelated learnings — only reference when genuinely relevant
 
 ## Context Brief Template
 

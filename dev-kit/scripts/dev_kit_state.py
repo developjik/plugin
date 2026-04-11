@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import sys
 import tempfile
 import subprocess
@@ -30,19 +31,40 @@ PHASES = {"clarify", "planning", "execute", "review-execute"}
 PROFILES = {"low", "medium", "high", None}
 PLAN_STATUSES = {"not_started", "drafting", "in_review", "revising", "approved"}
 PHASE_STATUSES = {"pending", "executing", "completed"}
+COMPOUND_STATUSES = {"not_started", "extracted", "skipped", None}
+LEARNINGS_DIR_NAME = "learnings"
+LEARNINGS_INDEX_FILE = "index.json"
+LEARNINGS_SCHEMA_VERSION = 1
+LEARNING_STATUSES = {"active", "archived"}
+LEARNING_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 ARTIFACT_FILENAMES = {
     "brief": "brief.md",
     "plan": "plan.md",
     "plan_review": "plan-review.md",
     "review": "review.md",
+    "compound": "compound.md",
 }
 
 
+def nearest_dev_kit_root(start: Path) -> Path | None:
+    for candidate in (start, *start.parents):
+        candidate_state_root = candidate / STATE_DIR_NAME
+        if (candidate_state_root / CURRENT_FILE).is_file():
+            return candidate
+        if (candidate_state_root / SESSIONS_DIR_NAME).is_dir():
+            return candidate
+    return None
+
+
 def resolve_workspace_root(start_dir: Path | None = None) -> Path:
-    override = Path.cwd() if start_dir is None else Path(start_dir).resolve()
+    override = Path.cwd() if start_dir is None else Path(start_dir).expanduser().resolve()
     env_root = os.environ.get("DEV_KIT_STATE_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve()
+
+    state_root_candidate = nearest_dev_kit_root(override)
+    if state_root_candidate is not None:
+        return state_root_candidate.resolve()
 
     try:
         result = subprocess.run(
@@ -162,6 +184,12 @@ def clear_current_pointer_if_matches(workspace_root: Path, expected_session_id: 
     lock_path = current_path.with_name(current_path.name + STATE_LOCK_SUFFIX)
     with _acquire_lock(lock_path):
         try:
+            payload = load_json(current_path)
+        except (OSError, json.JSONDecodeError):
+            return False
+        if payload.get("session_id") != expected_session_id:
+            return False
+        try:
             current_path.unlink()
         except FileNotFoundError:
             return False
@@ -170,6 +198,30 @@ def clear_current_pointer_if_matches(workspace_root: Path, expected_session_id: 
 
 def normalize_relative_path(path_value: str) -> Path:
     return Path(path_value)
+
+
+def resolve_workspace_relative_path(workspace_root: Path, path_value: str) -> Path:
+    if not isinstance(path_value, str) or not path_value:
+        raise RuntimeError("write-json path must be a non-empty relative path")
+
+    relative_path = Path(path_value)
+    if relative_path.is_absolute():
+        raise RuntimeError("write-json path must be relative to the workspace root")
+
+    root = workspace_root.resolve()
+    resolved = (root / relative_path).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError("write-json path must stay within the workspace root") from exc
+
+    dev_kit_root = state_root(workspace_root).resolve()
+    try:
+        resolved.relative_to(dev_kit_root)
+    except ValueError as exc:
+        raise RuntimeError("write-json path must stay within .dev-kit") from exc
+
+    return resolved
 
 
 def is_relative_to_workspace(path_value: str, workspace_root: Path) -> bool:
@@ -288,7 +340,7 @@ def validate_state_schema(schema: Any) -> list[str]:
         errors.append("Bundled state schema plan_version minimum is invalid")
 
     artifacts = properties.get("artifacts", {})
-    if set(artifacts.get("required", [])) != {"brief", "plan", "plan_review", "review"}:
+    if set(artifacts.get("required", [])) != {"brief", "plan", "plan_review", "review", "compound"}:
         errors.append("Bundled state schema artifacts required keys are invalid")
 
     phase_status = properties.get("phase_status", {})
@@ -398,6 +450,11 @@ def validate_state_payload(
         if not isinstance(payload.get(key), str) or not payload.get(key):
             errors.append(f"state.json {key} must be a non-empty string")
 
+    compound_status_enum = properties.get("compound_status", {}).get("enum", [])
+    compound_status = payload.get("compound_status")
+    if compound_status not in compound_status_enum:
+        errors.append("state.json compound_status must be not_started, extracted, skipped, or null")
+
     failure_reason = payload.get("failure_reason")
     if status in {"failed", "paused"}:
         if not isinstance(failure_reason, str) or not failure_reason.strip():
@@ -442,6 +499,8 @@ def validate_state_payload(
             errors.append("state.json artifacts.plan is required when plan_status is approved")
         if artifacts.get("plan_review") is None:
             errors.append("state.json artifacts.plan_review is required when plan_status is approved")
+        if compound_status == "extracted" and artifacts.get("compound") is None:
+            errors.append("state.json artifacts.compound is required when compound_status is extracted")
 
     if status == "completed":
         if not phase_status:
@@ -622,6 +681,7 @@ def load_resumable_state(workspace_root: Path) -> tuple[dict[str, Any] | None, s
 
 def render_summary(payload: dict[str, Any]) -> str:
     profile = payload["execution_profile"] or "unset"
+    compound = payload.get("compound_status") or "none"
     return (
         "Dev Kit: "
         f"{payload['session_id']} | "
@@ -629,8 +689,163 @@ def render_summary(payload: dict[str, Any]) -> str:
         f"status={payload['status']} | "
         f"next={payload['next_action']} | "
         f"profile={profile} | "
-        f"plan={payload['plan_status']}/v{payload['plan_version']}"
+        f"plan={payload['plan_status']}/v{payload['plan_version']} | "
+        f"compound={compound}"
     )
+
+
+# ── Learnings helpers ──
+
+
+def learnings_root(workspace_root: Path) -> Path:
+    return state_root(workspace_root) / LEARNINGS_DIR_NAME
+
+
+def learnings_index_path(workspace_root: Path) -> Path:
+    return learnings_root(workspace_root) / LEARNINGS_INDEX_FILE
+
+
+def load_learnings_index(workspace_root: Path) -> dict[str, Any]:
+    index_path = learnings_index_path(workspace_root)
+    if not index_path.exists():
+        return {"schema_version": LEARNINGS_SCHEMA_VERSION, "learnings": []}
+    try:
+        return load_json(index_path)
+    except (OSError, json.JSONDecodeError):
+        return {"schema_version": LEARNINGS_SCHEMA_VERSION, "learnings": []}
+
+
+def save_learnings_index(workspace_root: Path, index: dict[str, Any]) -> None:
+    path = learnings_index_path(workspace_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json_atomically(index, path)
+
+
+def find_relevant_learnings(
+    workspace_root: Path,
+    *,
+    tags: list[str] | None = None,
+    context_types: list[str] | None = None,
+    max_results: int = 5,
+) -> list[dict[str, Any]]:
+    """Search active learnings by tag and context overlap, ranked by relevance."""
+    index = load_learnings_index(workspace_root)
+    active = [l for l in index.get("learnings", []) if l.get("status") == "active"]
+
+    if not tags and not context_types:
+        # No filter: return most-referenced active learnings
+        active.sort(key=lambda l: (-l.get("reference_count", 0), l.get("created_at", "")))
+        return active[:max_results]
+
+    query_tags = set(t.lower() for t in (tags or []))
+    query_ctx = set(c.lower() for c in (context_types or []))
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for entry in active:
+        entry_tags = set(t.lower() for t in entry.get("tags", []))
+        entry_ctx = set(c.lower() for c in entry.get("context_types", []))
+
+        tag_overlap = len(query_tags & entry_tags)
+        ctx_overlap = len(query_ctx & entry_ctx)
+        score = tag_overlap * 2.0 + ctx_overlap * 1.5 + entry.get("reference_count", 0) * 0.1
+
+        if tag_overlap > 0 or ctx_overlap > 0:
+            scored.append((score, entry))
+
+    scored.sort(key=lambda pair: -pair[0])
+    return [entry for _, entry in scored[:max_results]]
+
+
+def render_learnings_summary(workspace_root: Path, max_results: int = 5) -> str:
+    """Render a compact text summary of available learnings for hook injection."""
+    index = load_learnings_index(workspace_root)
+    active = [l for l in index.get("learnings", []) if l.get("status") == "active"]
+
+    if not active:
+        return ""
+
+    active.sort(key=lambda l: (-l.get("reference_count", 0), l.get("created_at", "")))
+    top = active[:max_results]
+
+    lines = [f"Compound Learnings ({len(active)} active):"]
+    for entry in top:
+        tags_str = ", ".join(entry.get("tags", [])[:4])
+        refs = entry.get("reference_count", 0)
+        lines.append(f"  - [{entry['id']}] {entry['title']} (tags: {tags_str}) (refs: {refs})")
+
+    if len(active) > max_results:
+        lines.append(f"  ... and {len(active) - max_results} more")
+
+    return "\n".join(lines)
+
+
+def _validate_learning_id(learning_id: str) -> str:
+    if not isinstance(learning_id, str) or not learning_id:
+        raise ValueError("learning_id must be a non-empty lowercase hyphenated identifier")
+    if not LEARNING_ID_PATTERN.fullmatch(learning_id):
+        raise ValueError("learning_id must match ^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    return learning_id
+
+
+def add_learning(
+    workspace_root: Path,
+    *,
+    learning_id: str,
+    title: str,
+    source_session: str,
+    tags: list[str],
+    context_types: list[str],
+    content: str,
+    created_at: str,
+) -> None:
+    """Add a new learning entry: write the .md file and update index.json."""
+    lr = learnings_root(workspace_root)
+    lr.mkdir(parents=True, exist_ok=True)
+
+    validated_learning_id = _validate_learning_id(learning_id)
+    md_filename = f"{validated_learning_id}.md"
+    md_path = lr / md_filename
+    md_path.write_text(content, encoding="utf-8")
+
+    index = load_learnings_index(workspace_root)
+    existing = next((l for l in index["learnings"] if l.get("id") == validated_learning_id), None)
+    index["learnings"] = [l for l in index["learnings"] if l.get("id") != validated_learning_id]
+    index["learnings"].append({
+        "id": validated_learning_id,
+        "title": title,
+        "source_session": source_session,
+        "tags": tags,
+        "context_types": context_types,
+        "file": md_filename,
+        "created_at": created_at,
+        "last_referenced_at": existing.get("last_referenced_at") if existing else None,
+        "reference_count": existing.get("reference_count", 0) if existing else 0,
+        "status": existing.get("status", "active") if existing else "active",
+    })
+    save_learnings_index(workspace_root, index)
+
+
+def archive_learning(workspace_root: Path, learning_id: str) -> bool:
+    """Mark a learning as archived. Returns True if found and updated."""
+    index = load_learnings_index(workspace_root)
+    for entry in index.get("learnings", []):
+        if entry.get("id") == learning_id:
+            entry["status"] = "archived"
+            save_learnings_index(workspace_root, index)
+            return True
+    return False
+
+
+def bump_learning_reference(workspace_root: Path, learning_id: str, referenced_at: str) -> bool:
+    """Increment reference_count and update last_referenced_at. Returns True if found."""
+    index = load_learnings_index(workspace_root)
+    for entry in index.get("learnings", []):
+        if entry.get("id") == learning_id:
+            entry["reference_count"] = entry.get("reference_count", 0) + 1
+            entry["last_referenced_at"] = referenced_at
+            save_learnings_index(workspace_root, index)
+            return True
+    return False
 
 
 def command_summary(args: argparse.Namespace) -> int:
@@ -670,10 +885,54 @@ def command_write_json(args: argparse.Namespace) -> int:
         print("Dev Kit error: invalid json payload")
         return 1
 
+    root = Path(args.workspace_root).resolve()
     try:
-        write_json_atomically(payload, Path(args.path))
+        path = resolve_workspace_relative_path(root, args.path)
+        write_json_atomically(payload, path)
     except RuntimeError as exc:
         print(f"Dev Kit warning: {exc}")
+        return 1
+    return 0
+
+
+def command_resolve_workspace_root(args: argparse.Namespace) -> int:
+    start_dir: Path | None = None
+    if args.cwd:
+        start_dir = Path(args.cwd)
+    else:
+        raw = sys.stdin.read()
+        if raw.strip():
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict):
+                cwd = payload.get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    start_dir = Path(cwd)
+    if start_dir is None:
+        print("Dev Kit error: resolve-workspace-root requires --cwd or stdin json with cwd")
+        return 1
+    print(resolve_workspace_root(start_dir))
+    return 0
+
+
+def command_learnings_summary(args: argparse.Namespace) -> int:
+    root = Path(args.workspace_root).resolve() if args.workspace_root else resolve_workspace_root()
+    max_results = args.max_results if hasattr(args, "max_results") and args.max_results else 5
+    summary = render_learnings_summary(root, max_results=max_results)
+    if summary:
+        print(summary)
+    return 0
+
+
+def command_bump_learning(args: argparse.Namespace) -> int:
+    root = Path(args.workspace_root).resolve() if args.workspace_root else resolve_workspace_root()
+    from datetime import datetime, timezone
+
+    referenced_at = datetime.now(timezone.utc).isoformat()
+    if not bump_learning_reference(root, args.learning_id, referenced_at):
+        print(f"Dev Kit warning: learning '{args.learning_id}' not found")
         return 1
     return 0
 
@@ -702,9 +961,24 @@ def build_parser() -> argparse.ArgumentParser:
     schema_parser = subparsers.add_parser("validate-schema", help="Validate the bundled schema")
     schema_parser.set_defaults(func=command_validate_schema)
 
+    resolve_root_parser = subparsers.add_parser("resolve-workspace-root", help="Resolve the preferred workspace root")
+    resolve_root_parser.add_argument("--cwd", help="Starting cwd to resolve from")
+    resolve_root_parser.set_defaults(func=command_resolve_workspace_root)
+
     write_json_parser = subparsers.add_parser("write-json", help="Atomically write JSON payload to a file")
+    write_json_parser.add_argument("--workspace-root", required=True, help="Workspace root used for path validation")
     write_json_parser.add_argument("--path", required=True, help="Target path for atomic JSON write")
     write_json_parser.set_defaults(func=command_write_json)
+
+    learnings_parser = subparsers.add_parser("learnings-summary", help="Print compound learnings summary")
+    learnings_parser.add_argument("--workspace-root", help="Override workspace root resolution")
+    learnings_parser.add_argument("--max-results", type=int, default=5, help="Max learnings to show")
+    learnings_parser.set_defaults(func=command_learnings_summary)
+
+    bump_learning_parser = subparsers.add_parser("bump-learning", help="Increment reference count for a learning")
+    bump_learning_parser.add_argument("--workspace-root", help="Override workspace root resolution")
+    bump_learning_parser.add_argument("--learning-id", required=True, help="Learning ID to bump")
+    bump_learning_parser.set_defaults(func=command_bump_learning)
 
     clear_current_parser = subparsers.add_parser("clear-current", help="Remove current.json only when it points to target session")
     clear_current_parser.add_argument("--workspace-root", help="Override workspace root resolution")
