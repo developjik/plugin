@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Handoff",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Current Goal",
+    "Harness Configuration",
+    "Accepted Product Spec Summary",
+    "Latest Contract",
+    "Completed Work",
+    "Open Bugs Or Failing Checks",
+    "Reset Reason",
+    "Exact Next Steps",
+    "Resume Commands"
+  ]
+}

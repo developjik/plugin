@@ -1,0 +1,24 @@
+{
+  "name": "basic-smoke-flow",
+  "command_checks": [
+    {
+      "name": "html-captured",
+      "command": "printf 'live eval ready\\n'",
+      "expect_contains": "live eval ready"
+    }
+  ],
+  "steps": [
+    {
+      "type": "goto",
+      "url": "/"
+    },
+    {
+      "type": "assert_text",
+      "text": "Welcome"
+    },
+    {
+      "type": "screenshot",
+      "name": "home"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Evaluation",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Verdict",
+    "Score Breakdown",
+    "Findings",
+    "Evidence",
+    "Reproduction Steps",
+    "Artifact References",
+    "Recommendation"
+  ]
+}

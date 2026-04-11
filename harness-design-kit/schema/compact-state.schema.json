@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Compact State",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Current Goal",
+    "Session Snapshot",
+    "Accepted Facts",
+    "Active Contract",
+    "Current Progress",
+    "Latest Failing Evidence",
+    "Open Questions",
+    "Immediate Next Step",
+    "Resume Prompt",
+    "Source Artifacts"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "description": "Harness Design Kit session summary hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/hooks/session-start.sh\"",
+            "statusMessage": "Harness Design Kit session summary"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/hooks/user-prompt-submit.sh\"",
+            "statusMessage": "Harness Design Kit prompt summary"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/hooks/subagent-stop.sh\"",
+            "statusMessage": "Harness Design Kit subagent summary"
+          }
+        ]
+      }
+    ]
+  }
+}

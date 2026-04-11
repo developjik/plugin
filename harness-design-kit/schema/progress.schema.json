@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Design Kit Progress Report",
+  "type": "markdown-sections",
+  "required_sections": [
+    "Implemented Scope",
+    "Verification Run",
+    "Generator Self-Check",
+    "Known Risks",
+    "Next Suggested Step"
+  ]
+}

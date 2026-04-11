@@ -1,0 +1,48 @@
+{
+  "name": "harness-design-kit",
+  "version": "0.1.0",
+  "description": "Local runtime plugin for planner-generator-evaluator harness design in long-running application development and frontend iteration",
+  "author": {
+    "name": "developjik",
+    "email": "developjik@users.noreply.github.com",
+    "url": "https://github.com/developjik"
+  },
+  "homepage": "https://github.com/developjik/plugin/tree/main/harness-design-kit",
+  "repository": "https://github.com/developjik/plugin",
+  "license": "MIT",
+  "keywords": [
+    "harness",
+    "agents",
+    "planner",
+    "evaluator",
+    "frontend",
+    "long-running",
+    "codex-plugin"
+  ],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Harness Design Kit",
+    "shortDescription": "Planner-generator-evaluator runtime for long-running apps",
+    "longDescription": "A local runtime plugin inspired by Anthropic's harness design article. It packages planner, generator, and evaluator roles; sprint and continuous build profiles; frontend design scoring; file-based handoffs; stateful phase transitions; Playwright-backed live QA hooks; and reset-vs-compaction guidance for Codex and Claude Code.",
+    "developerName": "developjik",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/developjik/plugin",
+    "privacyPolicyURL": "https://github.com/developjik/plugin/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/developjik/plugin/blob/main/TERMS.md",
+    "defaultPrompt": [
+      "Use Harness Design Kit to turn this short app idea into a product spec, sprint contracts, and an evaluator-driven build loop.",
+      "Run a frontend design loop with scoring for design quality, originality, craft, and functionality.",
+      "Decide whether this long task should stay on compaction or switch to an explicit context reset handoff.",
+      "Use the local runtime commands to validate state, advance phases, and prepare handoffs."
+    ],
+    "brandColor": "#14532D"
+  }
+}
